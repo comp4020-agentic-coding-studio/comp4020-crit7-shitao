@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import Database from "better-sqlite3";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { type Booking, type Room, bookings, rooms } from "./schema";
@@ -52,6 +52,7 @@ export function createBooking(input: {
   date: string;
   slot: string;
   bookedBy: string;
+  ownerToken: string;
 }): Booking {
   try {
     return db.insert(bookings).values(input).returning().get();
@@ -62,4 +63,16 @@ export function createBooking(input: {
     }
     throw error;
   }
+}
+
+// Deletes only if the id and owner token both match — the DB-level guarantee
+// that mirrors the double-booking one: holding the id (guessable, sequential)
+// is never enough on its own to cancel someone else's booking.
+export function cancelBooking(id: number, ownerToken: string): Booking | null {
+  const [cancelled] = db
+    .delete(bookings)
+    .where(and(eq(bookings.id, id), eq(bookings.ownerToken, ownerToken)))
+    .returning()
+    .all();
+  return cancelled ?? null;
 }
