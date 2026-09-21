@@ -191,4 +191,47 @@ describe("booking", () => {
     await reader.cancel();
     expect(received).toContain("event: cancelled");
   }, 10_000);
+
+  it("books a future date within the two-week window and shows it on that date's page", async () => {
+    const bookedBy = `future probe ${process.hrtime.bigint()}`;
+    const futureSlot = "15:00";
+    const future = new Date(`${date}T00:00:00Z`);
+    future.setUTCDate(future.getUTCDate() + 7);
+    const futureDate = future.toISOString().slice(0, 10);
+
+    const res = await post(
+      "/api/bookings",
+      new URLSearchParams({ roomId, date: futureDate, slot: futureSlot, bookedBy }),
+    );
+    expect(res.status).toBe(303);
+
+    const page = await fetch(new URL(`/?date=${futureDate}`, baseUrl));
+    expect(await page.text()).toContain(`Booked — ${bookedBy}`);
+
+    // today's own page is unaffected — the booking only shows on its own date
+    const todayPage = await fetch(baseUrl);
+    expect(await todayPage.text()).not.toContain(`Booked — ${bookedBy}`);
+  });
+
+  it("refuses a booking for a date outside the two-week window", async () => {
+    const bookedBy = `out of range probe ${process.hrtime.bigint()}`;
+    const tooFar = new Date(`${date}T00:00:00Z`);
+    tooFar.setUTCDate(tooFar.getUTCDate() + 30);
+    const tooFarDate = tooFar.toISOString().slice(0, 10);
+
+    const res = await post(
+      "/api/bookings",
+      new URLSearchParams({ roomId, date: tooFarDate, slot: "16:00", bookedBy }),
+    );
+    expect(res.headers.get("location")).toBe("/?error=date");
+
+    const page = await fetch(new URL(`/?date=${tooFarDate}`, baseUrl));
+    expect(await page.text()).not.toContain(`Booked — ${bookedBy}`);
+  });
+
+  it("falls back to today when the date query param is out of range or malformed", async () => {
+    const page = await fetch(new URL("/?date=not-a-date", baseUrl));
+    const text = await page.text();
+    expect(text).toContain(`Room availability for ${date}`);
+  });
 });
