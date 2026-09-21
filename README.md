@@ -27,8 +27,17 @@ at an already-booked slot is refused and the first booking is left standing,
 and a new booking reaches a second client over `/api/events` inside the
 test's timeout.
 
+A booking can now be cancelled, freeing the slot for everyone live over the
+same SSE stream — gated by a random token set in a cookie the first time a
+browser books anything (`src/lib/owner.ts`), checked at the database layer
+alongside the row's own id
+(`WHERE id = ? AND owner_token = ?` in `cancelBooking`). That token answers
+"did this browser make this booking," nothing more: it doesn't vouch for the
+typed name, and clearing cookies or switching browsers loses the claim, same
+as the booking itself was never behind a login.
+
 What's a judgement call, left to the crit: whether the grid reads clearly at
 a glance, whether "book here instead of there" is the right frame for the
 real annoyance, and whether four rooms and one day is the right scope for a
-first pass — a date picker, cancellation, and accounts are real gaps this
-prototype doesn't try to close yet.
+first pass — a date picker and real accounts are gaps this prototype still
+doesn't try to close.
