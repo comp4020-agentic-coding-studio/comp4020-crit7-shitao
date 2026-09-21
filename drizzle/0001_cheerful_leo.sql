@@ -1,0 +1,1 @@
+ALTER TABLE `bookings` ADD `owner_token` text DEFAULT '' NOT NULL;

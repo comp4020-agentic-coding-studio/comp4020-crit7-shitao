@@ -22,6 +22,16 @@ export const bookings = sqliteTable(
     date: text().notNull(),
     slot: text().notNull(),
     bookedBy: text("booked_by").notNull(),
+    // Not an account — a random value set in a cookie the first time a
+    // browser books anything, so cancellation can be gated to "whoever holds
+    // the token this booking was made with" without asking anyone to sign in.
+    // It doesn't vouch for the typed name; it only answers "did this browser
+    // make this booking." The empty-string default only matters for rows
+    // already on the volume from before this column existed — it can never
+    // match a real cookie value, so old bookings are simply uncancellable,
+    // which is the safe default (nobody gets to claim ownership of a
+    // booking they didn't actually make).
+    ownerToken: text("owner_token").notNull().default(""),
     createdAt: text("created_at")
       .notNull()
       .default(sql`(datetime('now'))`),

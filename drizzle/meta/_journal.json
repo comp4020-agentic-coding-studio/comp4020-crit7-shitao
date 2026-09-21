@@ -8,6 +8,13 @@
       "when": 1789967129053,
       "tag": "0000_steep_sally_floyd",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1789988565179,
+      "tag": "0001_cheerful_leo",
+      "breakpoints": true
     }
   ]
 }
