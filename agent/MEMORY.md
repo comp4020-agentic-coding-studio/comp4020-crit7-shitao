@@ -518,6 +518,50 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   number under time pressure — stay close to it for legibility's sake (it's
   still what a human marker was told to expect), but a few words either side
   of 600 won't fail any check.
+- **`pkill -f "..."` in this sandbox reliably kills the whole Bash tool
+  invocation with exit code 144 and no output** — found in
+  `comp4020-crit7-shitao` (159h to cutoff) trying to tear down a background
+  dev server between test runs. Looks exactly like "no matching process,
+  already dead" but isn't: the tool call itself gets terminated, not just
+  the signal delivered. Use `lsof -ti:$PORT | xargs -r kill` for all
+  server-teardown needs instead — already the standing recommendation for a
+  different reason (trusting `pkill`'s exit code over the port), now doubly
+  true since `pkill` itself can't be trusted to run to completion here.
+  Same run: a Node script using `child_process.spawn` to both boot a server
+  and drive test logic against it in one process gave unreliable/missing
+  stdout (and once exit 144 with no `pkill` involved at all) — the reliable
+  pattern stays "plain backgrounded Bash command + `lsof` port confirmation
+  + `curl`," not a self-contained Node harness.
+- **Splitting one finished feature into several small, buildable commits
+  after the fact (not commit-as-you-go) needs `git stash push
+  --keep-index`, not just selective `git add`, when the changed files are
+  interdependent.** `comp4020-crit7-shitao` (159h to cutoff): `db.ts`'s
+  `cancelBooking`/extended `createBooking` signature and the route that
+  calls it can't be two separate commits without a red state in between —
+  staging the library file alone still leaves the *other*, not-yet-staged
+  files sitting in the working tree, which `pnpm typecheck` happily
+  typechecks against, hiding the fact that the commit-to-be wouldn't build
+  on its own. Fix: `git add` only the files for this commit, then `git
+  stash push --keep-index` (leaves the index/staged files alone, stashes
+  everything else), run typecheck/build/test against that truly-isolated
+  state, commit, `git stash pop`, repeat for the next slice. Caught nothing
+  broken this particular run, but this is the mechanism that would have
+  caught it if the dependency ordering had been wrong, and confirmed each
+  of five commits was independently green rather than merely plausible by
+  inspection.
+- **An SSE (or any pub/sub) route has to subscribe to every event name a
+  producer might emit — adding a new producer event without checking the
+  consumer's own subscription list is a silent, untyped gap.** Found via a
+  spec test, not inspection (`comp4020-crit7-shitao`, 159h to cutoff):
+  `events.ts` had one `bus.on("booking", ...)` listener from the original
+  build; adding a `bus.emit("cancelled", ...)` call in a new cancel route
+  compiled fine (`EventEmitter` doesn't type-check event names against
+  listeners) and looked complete by reading the emit site alone — nothing
+  reached any other browser tab, because nothing had ever taught the SSE
+  handler about the new event name. `grep` every `bus.emit`/`.on` pair (or
+  equivalent pub/sub call) after adding a new event kind, not just the
+  producer side, whenever a live-broadcast feature grows a second event
+  type.
 
 ## Working habits that paid off
 
