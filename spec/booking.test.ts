@@ -10,13 +10,24 @@ const baseUrl = inject("baseUrl");
 
 // Astro checks form POSTs carry a same-origin Origin header (CSRF
 // protection); browsers send it automatically, a bare fetch doesn't.
-const post = (path: string, body: URLSearchParams) =>
+const post = (path: string, body: URLSearchParams, cookie?: string) =>
   fetch(new URL(path, baseUrl), {
     method: "POST",
-    headers: { origin: baseUrl },
+    headers: { origin: baseUrl, ...(cookie ? { cookie } : {}) },
     body,
     redirect: "manual",
   });
+
+// The server hands out the owner-token cookie on the Set-Cookie header of a
+// booking POST; a bare fetch doesn't carry cookies between calls on its own,
+// so tests that need to act "as" the same booker have to pass it through by
+// hand — the same thing a browser does automatically.
+const ownerCookie = (res: Response) => {
+  const setCookie = res.headers.get("set-cookie");
+  const match = setCookie?.match(/booker=[^;]+/);
+  if (!match) throw new Error("no booker cookie set on the response");
+  return match[0];
+};
 
 describe("booking", () => {
   let date: string;
@@ -94,5 +105,90 @@ describe("booking", () => {
     await reader.cancel();
     expect(received).toContain("event: booking");
     expect(received).toContain(bookedBy);
+  }, 10_000);
+
+  it("lets the booker who made a booking cancel it, freeing the slot again", async () => {
+    const bookedBy = `cancel probe ${process.hrtime.bigint()}`;
+    const cancelSlot = "12:00";
+
+    const booked = await post("/api/bookings", new URLSearchParams({ roomId, date, slot: cancelSlot, bookedBy }));
+    expect(booked.status).toBe(303);
+    const cookie = ownerCookie(booked);
+
+    // the owner's cookie is what makes the cancel form render at all — a
+    // page view with no matching cookie never sees it
+    const owned = await fetch(baseUrl, { headers: { cookie } });
+    const ownedHtml = await owned.text();
+    const cellMatch = ownedHtml.match(
+      new RegExp(`data-room="${roomId}" data-slot="${cancelSlot}"[\\s\\S]*?action="(/api/bookings/\\d+/cancel)"`),
+    );
+    if (!cellMatch) throw new Error("no cancel form found for the booking's own cookie");
+
+    const cancelled = await post(cellMatch[1], new URLSearchParams(), cookie);
+    expect(cancelled.status).toBe(303);
+    expect(cancelled.headers.get("location")).toBe("/");
+
+    const page = await fetch(baseUrl);
+    const text = await page.text();
+    expect(text).not.toContain(`Booked — ${bookedBy}`);
+    // the slot is free again, not just vacated of this booking
+    const cell = text.match(new RegExp(`data-room="${roomId}" data-slot="${cancelSlot}"[\\s\\S]{0,300}`));
+    expect(cell?.[0]).toContain("<form");
+  });
+
+  it("refuses to cancel a booking without that booking's own owner cookie", async () => {
+    const bookedBy = `guarded probe ${process.hrtime.bigint()}`;
+    const guardedSlot = "13:00";
+
+    const booked = await post(
+      "/api/bookings",
+      new URLSearchParams({ roomId, date, slot: guardedSlot, bookedBy }),
+    );
+    const ownerCookieValue = ownerCookie(booked);
+
+    const owned = await fetch(baseUrl, { headers: { cookie: ownerCookieValue } });
+    const ownedHtml = await owned.text();
+    const cellMatch = ownedHtml.match(
+      new RegExp(`data-room="${roomId}" data-slot="${guardedSlot}"[\\s\\S]*?action="(/api/bookings/\\d+/cancel)"`),
+    );
+    if (!cellMatch) throw new Error("no cancel form found for the booking's own cookie");
+
+    // no cookie at all this time — a different browser, or the same request
+    // replayed without the owner's cookie
+    const denied = await post(cellMatch[1], new URLSearchParams());
+    expect(denied.headers.get("location")).toBe("/?error=cancel");
+
+    const page = await fetch(baseUrl);
+    expect(await page.text()).toContain(`Booked — ${bookedBy}`);
+  });
+
+  it("broadcasts a cancellation over the SSE stream", async () => {
+    const bookedBy = `live cancel probe ${process.hrtime.bigint()}`;
+    const liveSlot = "14:00";
+
+    const booked = await post("/api/bookings", new URLSearchParams({ roomId, date, slot: liveSlot, bookedBy }));
+    const cookie = ownerCookie(booked);
+    const owned = await fetch(baseUrl, { headers: { cookie } });
+    const ownedHtml = await owned.text();
+    const cellMatch = ownedHtml.match(
+      new RegExp(`data-room="${roomId}" data-slot="${liveSlot}"[\\s\\S]*?action="(/api/bookings/\\d+/cancel)"`),
+    );
+    if (!cellMatch) throw new Error("no cancel form found for the booking's own cookie");
+
+    const stream = await fetch(new URL("/api/events", baseUrl));
+    const reader = stream.body?.getReader();
+    if (!reader) throw new Error("no response body");
+
+    await post(cellMatch[1], new URLSearchParams(), cookie);
+
+    const decoder = new TextDecoder();
+    let received = "";
+    while (!received.includes("event: cancelled")) {
+      const { value, done } = await reader.read();
+      if (done) throw new Error("stream ended before the event arrived");
+      received += decoder.decode(value, { stream: true });
+    }
+    await reader.cancel();
+    expect(received).toContain("event: cancelled");
   }, 10_000);
 });
