@@ -1,5 +1,6 @@
 ---
 import { listBookings, listRooms } from "../lib/db";
+import { OWNER_COOKIE } from "../lib/owner";
 import { SLOTS, today } from "../lib/slots";
 import "../styles.css";
 
@@ -8,6 +9,12 @@ const rooms = listRooms();
 const bookings = listBookings(date);
 const bookingFor = (roomId: number, slot: string) =>
   bookings.find((b) => b.roomId === roomId && b.slot === slot);
+
+// Read-only here: whether *this* cell's cancel button renders depends on
+// whether the visiting browser's cookie matches the booking's owner token,
+// but the cookie itself is only ever minted on a POST — a page view never
+// creates one.
+const myToken = Astro.cookies.get(OWNER_COOKIE)?.value;
 
 const error = Astro.url.searchParams.get("error");
 ---
@@ -56,7 +63,14 @@ const error = Astro.url.searchParams.get("error");
                   return (
                     <td data-room={room.id} data-slot={slot}>
                       {booking ? (
-                        <span>Booked — {booking.bookedBy}</span>
+                        <div class="booked">
+                          <span>Booked — {booking.bookedBy}</span>
+                          {myToken && booking.ownerToken === myToken && (
+                            <form method="post" action={`/api/bookings/${booking.id}/cancel`}>
+                              <button type="submit">Cancel</button>
+                            </form>
+                          )}
+                        </div>
                       ) : (
                         <form method="post" action="/api/bookings">
                           <input type="hidden" name="roomId" value={room.id} />
@@ -91,9 +105,67 @@ const error = Astro.url.searchParams.get("error");
         );
         const form = cell?.querySelector("form");
         if (!form) return; // already booked (or not today) in this tab
+        const div = document.createElement("div");
+        div.className = "booked";
         const span = document.createElement("span");
         span.textContent = `Booked — ${booking.bookedBy}`;
-        cell.replaceChildren(span);
+        div.append(span);
+        cell.replaceChildren(div);
+      });
+      // The other half of live: a slot someone else cancels frees up in every
+      // *other* open tab too, not just on their own next reload. The tab that
+      // did the cancelling gets there via its own 303 redirect, same as a
+      // fresh booking — this only rebuilds the bookable form for everyone
+      // else. Built with createElement/textContent rather than innerHTML: the
+      // server doesn't fully control what ends up in booking.slot (nothing
+      // stops a hand-built request sending an arbitrary string, see
+      // bookings.ts), and this data arrives over SSE from that same table, so
+      // treat it the same as any other untrusted string rather than trusting
+      // it because it usually looks like "09:00".
+      source.addEventListener("cancelled", (event) => {
+        const booking = JSON.parse(event.data);
+        if (booking.date !== date) return;
+        const cell = document.querySelector(
+          `td[data-room="${booking.roomId}"][data-slot="${booking.slot}"]`,
+        );
+        if (!cell || cell.querySelector("form")) return; // already free in this tab
+        const roomName = cell.closest("tr")?.querySelector("th")?.textContent ?? "this room";
+        const cellId = `${booking.roomId}-${booking.slot}`;
+
+        const form = document.createElement("form");
+        form.method = "post";
+        form.action = "/api/bookings";
+
+        const hidden = (name, value) => {
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = name;
+          input.value = value;
+          form.append(input);
+        };
+        hidden("roomId", booking.roomId);
+        hidden("date", date);
+        hidden("slot", booking.slot);
+
+        const label = document.createElement("label");
+        label.htmlFor = `name-${cellId}`;
+        label.className = "sr-only";
+        label.textContent = `Your name, for ${roomName} at ${booking.slot}`;
+        form.append(label);
+
+        const input = document.createElement("input");
+        input.id = `name-${cellId}`;
+        input.name = "bookedBy";
+        input.placeholder = "Name";
+        input.required = true;
+        input.maxLength = 80;
+        form.append(input);
+
+        const button = document.createElement("button");
+        button.textContent = "Book";
+        form.append(button);
+
+        cell.replaceChildren(form);
       });
     </script>
   </body>

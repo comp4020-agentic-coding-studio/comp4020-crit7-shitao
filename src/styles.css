@@ -92,6 +92,26 @@ td form input {
   width: 100%;
 }
 
+.booked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.booked form {
+  margin: 0;
+  min-width: 0;
+}
+
+.booked button {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.75rem;
+  color: #a30000;
+  background: none;
+  border: 1px solid #a30000;
+}
+
 [role="alert"] {
   font-weight: 600;
   color: #a30000;
