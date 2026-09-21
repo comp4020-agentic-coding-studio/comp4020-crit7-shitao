@@ -36,8 +36,17 @@ alongside the row's own id
 typed name, and clearing cookies or switching browsers loses the claim, same
 as the booking itself was never behind a login.
 
+A date picker closes the other of the two gaps the first pass named — bounded
+to a two-week look-ahead (`BOOKING_WINDOW_DAYS` in `src/lib/slots.ts`), not an
+open-ended calendar: the actual planning horizon for a study room is "this
+week or next," and the real failure this app targets (two groups turning up
+to the same door) is a same-day problem regardless of how far out the picker
+reaches. `isBookableDate` is the single gate both the page (which date it'll
+render) and `/api/bookings` (which date it'll accept) check against, so a
+hand-built request past the window is refused the same way an unlisted slot
+already was.
+
 What's a judgement call, left to the crit: whether the grid reads clearly at
 a glance, whether "book here instead of there" is the right frame for the
-real annoyance, and whether four rooms and one day is the right scope for a
-first pass — a date picker and real accounts are gaps this prototype still
-doesn't try to close.
+real annoyance, and whether two weeks is the right window — real accounts are
+the one gap this prototype still doesn't try to close.
