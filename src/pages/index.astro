@@ -1,8 +1,15 @@
 ---
-import { listMessages } from "../lib/db";
+import { listBookings, listRooms } from "../lib/db";
+import { SLOTS, today } from "../lib/slots";
 import "../styles.css";
 
-const messages = listMessages();
+const date = today();
+const rooms = listRooms();
+const bookings = listBookings(date);
+const bookingFor = (roomId: number, slot: string) =>
+  bookings.find((b) => b.roomId === roomId && b.slot === slot);
+
+const error = Astro.url.searchParams.get("error");
 ---
 
 <!doctype html>
@@ -10,43 +17,83 @@ const messages = listMessages();
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>COMP4020 prototype</title>
+    <title>Study rooms — {date}</title>
   </head>
   <body>
     <nav aria-label="site">
-      <a href="/">Guestbook</a>
+      <a href="/">Study rooms</a>
       <a href="/readme/">About</a>
     </nav>
     <main>
-      <h1>Guestbook</h1>
+      <h1>Book a study room</h1>
       <p>
-        A minimal full-stack starter: messages live in SQLite on the machine's
-        volume (state survives a reload and a redeploy), and new messages
-        appear in every open tab over a server-sent-events stream — open this
-        page twice and sign it in one. Replace all of this with your own
-        prototype.
+        {rooms.length} rooms, hourly slots for today ({date}), Australia/Canberra
+        time. The library's own room-booking page doesn't show anyone else's
+        booking until you reload it, so two groups regularly turn up to the same
+        room at the same time. Book here instead and every open tab sees a slot
+        go from free to booked the moment it happens — no reload needed.
       </p>
-      <form method="post" action="/api/messages">
-        <label for="body">Leave a message</label>
-        <input id="body" name="body" required maxlength="500" />
-        <button>Sign</button>
-      </form>
-      <ul id="messages">
-        {messages.map((message) => <li>{message.body}</li>)}
-      </ul>
+      {error === "taken" && <p role="alert">Someone booked that slot just before you did — pick another.</p>}
+      {error === "missing" && <p role="alert">Name, room and slot are all required.</p>}
+      <div class="grid-wrap">
+        <table>
+          <caption>Room availability for {date}</caption>
+          <thead>
+            <tr>
+              <th scope="col">Room</th>
+              {SLOTS.map((slot) => (
+                <th scope="col">{slot}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rooms.map((room) => (
+              <tr>
+                <th scope="row">{room.name}</th>
+                {SLOTS.map((slot) => {
+                  const booking = bookingFor(room.id, slot);
+                  const cellId = `${room.id}-${slot}`;
+                  return (
+                    <td data-room={room.id} data-slot={slot}>
+                      {booking ? (
+                        <span>Booked — {booking.bookedBy}</span>
+                      ) : (
+                        <form method="post" action="/api/bookings">
+                          <input type="hidden" name="roomId" value={room.id} />
+                          <input type="hidden" name="date" value={date} />
+                          <input type="hidden" name="slot" value={slot} />
+                          <label for={`name-${cellId}`} class="sr-only">
+                            Your name, for {room.name} at {slot}
+                          </label>
+                          <input id={`name-${cellId}`} name="bookedBy" placeholder="Name" required maxlength="80" />
+                          <button>Book</button>
+                        </form>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </main>
-    <script>
-      // The live half of the demo: subscribe to the SSE stream and prepend
-      // messages as they arrive. The form itself needs none of this — its
-      // POST + redirect re-renders the submitting tab from SQLite; this
-      // stream is how every other tab finds out.
-      const list = document.querySelector("#messages");
+    <script is:inline define:vars={{ date }}>
+      // The live half: subscribe to the SSE stream and flip a cell from free
+      // to booked the moment anyone books it, in any tab — this is the whole
+      // point, since the real library page never does this.
       const source = new EventSource("/api/events");
-      source.addEventListener("message", (event) => {
-        const message = JSON.parse(event.data);
-        const item = document.createElement("li");
-        item.textContent = message.body;
-        list?.prepend(item);
+      source.addEventListener("booking", (event) => {
+        const booking = JSON.parse(event.data);
+        if (booking.date !== date) return;
+        const cell = document.querySelector(
+          `td[data-room="${booking.roomId}"][data-slot="${booking.slot}"]`,
+        );
+        const form = cell?.querySelector("form");
+        if (!form) return; // already booked (or not today) in this tab
+        const span = document.createElement("span");
+        span.textContent = `Booked — ${booking.bookedBy}`;
+        cell.replaceChildren(span);
       });
     </script>
   </body>
