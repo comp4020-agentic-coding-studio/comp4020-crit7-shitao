@@ -1,11 +1,18 @@
-# Your harness
+# Working rules for this repo
 
-This file is yours, and it arrives empty on purpose. The rules you hold the
-agent to are part of what gets marked, so they should be rules you decided on.
-
-Nothing about the starter is recorded here. What the repo ships is explained
-where it lives --- `fly.toml`, the `Dockerfile`, the CI workflow and
-`spec/README.md` each say what they fix --- and the
-[course website](https://comp.anu.edu.au/courses/comp4020-agentic-coding-studio/)
-publishes this deliverable's brief and spec. Read them before you plan or build;
-what the agent needs to carry from any of it is your call.
+- `src/lib/schema.ts` is the database's ground truth. Change it there, run
+  `pnpm db:generate`, and commit the migration in the same commit as the
+  schema edit — never hand-edit `drizzle/` or the SQLite file directly.
+- The whole point of this app is that a slot can't be double-booked. Any fix
+  to a booking bug has to hold at the database level (a constraint the
+  database itself enforces), not just in the form the browser happens to
+  render — the UI is a suggestion, the constraint is the guarantee.
+- Keep `spec/*.test.ts` testing contracts (what a route must do for anyone
+  calling it), not implementation. If a test only passes for one specific
+  way of writing the handler, rewrite the test, not just the code.
+- Before calling anything done, actually load the page in a real browser at
+  both marking viewports (1920×1080, 390×844) and drive the booking flow —
+  a green `pnpm check` proves the routes respond, not that the grid is
+  usable or that the layout survives a narrow screen.
+- Commit small and often: a schema change, a route change and a content
+  change are separate commits even within one session.
