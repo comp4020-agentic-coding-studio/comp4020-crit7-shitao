@@ -1,10 +1,19 @@
 ---
 import { listBookings, listRooms } from "../lib/db";
 import { OWNER_COOKIE } from "../lib/owner";
-import { SLOTS, today } from "../lib/slots";
+import { SLOTS, addDays, isBookableDate, today } from "../lib/slots";
 import "../styles.css";
 
-const date = today();
+// A requested date outside the two-week booking window (or not a date at
+// all) falls back to today rather than erroring — the page's own nav links
+// never produce an out-of-window date, so this only bites a hand-built URL.
+const requested = Astro.url.searchParams.get("date");
+const date = requested && isBookableDate(requested) ? requested : today();
+const prevDate = addDays(date, -1);
+const nextDate = addDays(date, 1);
+const canGoPrev = prevDate >= today();
+const canGoNext = isBookableDate(nextDate);
+
 const rooms = listRooms();
 const bookings = listBookings(date);
 const bookingFor = (roomId: number, slot: string) =>
@@ -34,14 +43,29 @@ const error = Astro.url.searchParams.get("error");
     <main>
       <h1>Book a study room</h1>
       <p>
-        {rooms.length} rooms, hourly slots for today ({date}), Australia/Canberra
-        time. The library's own room-booking page doesn't show anyone else's
-        booking until you reload it, so two groups regularly turn up to the same
-        room at the same time. Book here instead and every open tab sees a slot
-        go from free to booked the moment it happens — no reload needed.
+        {rooms.length} rooms, hourly slots, Australia/Canberra time, up to two
+        weeks ahead. The library's own room-booking page doesn't show anyone
+        else's booking until you reload it, so two groups regularly turn up to
+        the same room at the same time. Book here instead and every open tab
+        sees a slot go from free to booked the moment it happens — no reload
+        needed.
       </p>
       {error === "taken" && <p role="alert">Someone booked that slot just before you did — pick another.</p>}
       {error === "missing" && <p role="alert">Name, room and slot are all required.</p>}
+      {error === "date" && <p role="alert">That date isn't bookable — pick one within the next two weeks.</p>}
+      <nav aria-label="date">
+        {canGoPrev ? (
+          <a href={`/?date=${prevDate}`}>&larr; {prevDate}</a>
+        ) : (
+          <span aria-hidden="true">&larr;</span>
+        )}
+        <strong>{date}</strong>
+        {canGoNext ? (
+          <a href={`/?date=${nextDate}`}>{nextDate} &rarr;</a>
+        ) : (
+          <span aria-hidden="true">&rarr;</span>
+        )}
+      </nav>
       <div class="grid-wrap">
         <table>
           <caption>Room availability for {date}</caption>
