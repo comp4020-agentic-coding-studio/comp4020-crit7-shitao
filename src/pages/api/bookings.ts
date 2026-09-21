@@ -2,7 +2,7 @@ import type { APIRoute } from "astro";
 import { ownerToken } from "../../lib/owner";
 import { SlotTakenError, createBooking } from "../../lib/db";
 import { bus } from "../../lib/events";
-import { SLOTS } from "../../lib/slots";
+import { SLOTS, isBookableDate } from "../../lib/slots";
 
 // The write half of the booker: a plain HTML form POSTs here, the booking
 // goes into SQLite (or doesn't, if the slot's already taken), and a
@@ -25,6 +25,13 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   // over SSE, so an unvalidated value here isn't just a display glitch.
   if (!roomId || !date || !slot || !bookedBy || !(SLOTS as readonly string[]).includes(slot)) {
     return redirect("/?error=missing", 303);
+  }
+
+  // The page only ever sends a date within its own two-week window via a
+  // hidden input, but nothing stops a hand-built request sending any string —
+  // same reasoning as the slot enum check above.
+  if (!isBookableDate(date)) {
+    return redirect("/?error=date", 303);
   }
 
   const token = ownerToken(cookies);
