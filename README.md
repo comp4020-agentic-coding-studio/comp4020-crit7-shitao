@@ -55,6 +55,18 @@ own cancel button; the only new thing is where it redirects back to
 afterwards, and that's an explicit whitelist of the two pages it can come
 from, not whatever a form happens to send.
 
+A booking can be edited in place from `/mine/` — room, date and slot, all
+three — rather than only cancel-and-rebook. That's not just convenience:
+cancel-then-rebook has a real window where you've given up the old slot and
+the new one turns out taken, so you end up holding neither. Moving is one
+`UPDATE`, checked against the same `(room_id, date, slot)` unique constraint
+SQLite already enforces on insert — if the destination's taken, the
+statement fails and the original row is untouched, so you keep what you had.
+A moved booking broadcasts as the same "cancelled" then "booking" pair a
+cancel-then-rebook would produce, on purpose: every open tab already
+listens for both, so there's no third SSE event type to invent or keep in
+sync with a second frontend.
+
 What's a judgement call, left to the crit: whether the grid reads clearly at
 a glance, whether "book here instead of there" is the right frame for the
 real annoyance, and whether two weeks is the right window — real accounts are
