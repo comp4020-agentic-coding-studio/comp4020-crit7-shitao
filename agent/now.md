@@ -1,60 +1,68 @@
 # now
 
-**Fourth run for crit-7, 141h to cutoff at start.** Deliverable is
+**Fifth run for crit-7, 135h to cutoff at start.** Deliverable is
 `comp4020-crit7-shitao`: "Build the ANU system you wish existed," brief at
 `https://comp.anu.edu.au/courses/comp4020-agentic-coding-studio/api/crits/07-anu-system.json`.
 Still well inside the 168h window --- not the finishing run, so no
 `PROCESS.md` rewrite, no `reflections/crit-7.md`, no push.
 
+Brief's warning callout (update the `comp4020` plugin, two `claude plugin`
+commands) doesn't apply to this environment: `claude plugin marketplace
+list` returns "No marketplaces configured," so there's no comp4020 plugin
+installed here to update. Not a gap in this run --- just not a thing this
+session has.
+
 ## What this run built
 
-Added a "My bookings" view (`/mine/`): the grid only ever renders one date,
-so finding a booking made a few days ago meant clicking through the date
-picker one day at a time. `/mine/` reads the same owner-token cookie the
-cancel button already trusts, across the whole two-week window instead of
-one date, sorted oldest-first.
+Editing a booking in place from `/mine/` --- change room/date/slot without
+cancel-and-rebook. Picked this over the other `now.md`-listed candidate
+(cross-window name search for someone else's booking) because it's the one
+with a real correctness story, not just convenience: cancel-then-rebook has
+a genuine window where you've freed the old slot and the new one turns out
+taken, so you lose the booking entirely. An in-place `UPDATE` is checked
+against the same `(room_id, date, slot)` unique constraint on update as on
+insert, so a failed move leaves the original booking untouched.
 
-- `src/lib/db.ts`: `listBookingsByOwner(token, fromDate)` --- no schema
-  change, reuses the existing `owner_token` column.
-- `src/pages/mine.astro`: new page, listing every booking that cookie holds
-  from today onward, each with a link back to its own date on the grid and
-  a cancel button.
-- `src/pages/api/bookings/[id]/cancel.ts`: cancelling now accepts an
-  optional `returnTo` form field, checked against an explicit whitelist
-  (`/` or `/mine/`) rather than trusted raw --- so it can't become an open
-  redirect. The grid's own cancel forms never send it, so they default to
-  `/` exactly as before.
-- Nav links added to `index.astro` and `readme.astro`; `spec/routes.ts` now
-  covers `/mine/` too, so the standing a11y/invariants suite checks it like
-  every other page.
-- `spec/mine.test.ts`: four new tests --- lists across two dates sorted
-  correctly, doesn't leak another browser's bookings, cancelling from
-  `/mine/` returns to `/mine/` and frees the slot on the grid, cancelling
-  without `returnTo` still defaults to the grid. 46/46 green.
-- `README.md`: describes the view and the returnTo whitelist.
+- `src/lib/db.ts`: `moveBooking(id, ownerToken, next)` --- selects the
+  current row (ownership + existence check), then a single `UPDATE ... WHERE
+  id = ? AND owner_token = ?`, catching `SQLITE_CONSTRAINT_UNIQUE` the same
+  way `createBooking` already does. No schema change --- reuses existing
+  columns.
+- `src/pages/api/bookings/[id]/move.ts`: new route, same
+  validation/ownership/whitelist shape as `cancel.ts`. On success emits the
+  *existing* `"cancelled"` event (old snapshot) then `"booking"` event (new
+  snapshot) over the SSE bus --- deliberately reusing the two event types
+  every open tab already listens for, rather than inventing a third
+  "moved" event and a new client-side handler for it.
+- `src/pages/mine.astro`: each booking gets a `<details>`-collapsed "Move"
+  form (room select, native `<input type=date>` bounded to the booking
+  window, slot select), plus four new `?error=` messages
+  (taken/missing/date/notfound) alongside the existing cancel one.
+- `spec/move.test.ts`: four tests --- moves and frees the old cell/fills the
+  new one; refuses a move into a slot someone else holds, leaving both
+  bookings intact; refuses without the owner cookie; refuses a date outside
+  the window. Used dates +5/+10 days out specifically because they're unused
+  by any other spec file's hardcoded today/+3/+7 combinations (grepped
+  first, per the standing collision gotcha in `MEMORY.md`). 50/50 green.
+- `README.md`: describes the feature and the atomicity argument for it.
 
-Four scoped commits (`fa3ff7c` through `149855c`) --- lib, pages (incl. the
-cancel-route change and nav links, which are all one coherent slice), spec,
-docs --- each verified buildable/green via `git stash push --keep-index`
-before moving to the next.
-
-One real bug caught mid-build, not by any check: `spec/mine.test.ts`'s first
-draft booked slot `13:00` on today's date, which silently collided with
-`spec/booking.test.ts`'s `guardedSlot` (also `13:00` today, same room --- both
-files resolve the same room via the same "first 09:00 cell" lookup). The
-`createBooking` failure was silent because `ownerToken(cookies)` mints a
-cookie *before* the create is attempted, so the losing test's `ownerCookie()`
-call still succeeded even though no booking existed under it. Fixed by
-picking `16:00` (unused by any other spec file's today-dated booking) rather
-than adding cross-file coordination machinery.
+Four scoped commits (`c820b03` lib, `9f0c34a` pages+route, `235a418` spec,
+`bcb49f8` docs), each verified buildable/green in true isolation via `git
+stash push --keep-index -u` before moving to the next --- the `-u` mattered
+this time: the first attempt without it left two new *untracked* files
+(the route, the spec file) sitting in the tree while `mine.astro` got
+stashed away, giving a misleading test failure that looked like a real bug.
+Recorded as a refinement to the existing stash-isolation entry in
+`MEMORY.md`.
 
 Verified with a real-browser pass (`agent-browser`, session
-`crit7-shitao-verify`, confirmed via `eval "location.href"` before trusting
-any of it): booked today and a future date under one cookie, `/mine/` listed
-both correctly sorted at both 1920x1080 and 390x844, cancelling from `/mine/`
-returned to `/mine/` (not `/`) and freed the slot on the grid (checked via a
-plain `curl` of the built HTML), empty state renders cleanly. No console
-errors. Server shut down and port confirmed free before finishing.
+`crit7-move-verify`, checked `location.href` and `window.innerWidth` before
+trusting anything): booked 09:00 today via the real form, moved it to 11:00
+from `/mine/`'s Move form, confirmed via `curl` of the built HTML that
+09:00 is free again and 11:00 shows the booking, screenshotted `/mine/` and
+the grid at both 1920x1080 and 390x844 (the Move form wraps cleanly on
+mobile, no overflow), no console errors. Server shut down and port
+confirmed free before finishing.
 
 ## Next action
 
@@ -62,16 +70,16 @@ Still not the finishing run. What's left from the original scope list:
 
 - **Real accounts** remain the one named gap --- explicitly out of scope,
   per the "no login, a typed name not an account" framing.
-- Candidates for a future deepening pass: editing a booking in place
-  (currently cancel-and-rebook only); a simple name/room search across the
-  window (partially subsumed by `/mine/` for your *own* bookings, but not
-  for finding someone else's); or spending a future run purely on the
-  finishing-run checklist dry-run if nothing else surfaces.
+- Candidates for a future deepening pass: a simple name/room search across
+  the window for *someone else's* booking (not just your own, which `/mine/`
+  already covers); or spending a future run purely on the finishing-run
+  checklist dry-run if nothing else surfaces.
 - Nothing currently known broken. Deploy state: still whatever run 2 last
   pushed live --- this run committed locally only, per doctrine (finishing
   steps including push/deploy are gated inside 24h to cutoff).
 
 Whichever run is told it's the last one: write `PROCESS.md` for real (cite
-the actual commits across all four runs), write `reflections/crit-7.md`
-(source `title`, not a week number), re-run `pnpm check:evidence`, then push
-and redeploy/confirm against the live URL.
+the actual commits across all five runs), write `reflections/crit-7.md`
+(source `title`, "Build the ANU system you wish existed", not a week
+number), re-run `pnpm check:evidence`, then push and redeploy/confirm
+against the live URL.

@@ -549,6 +549,21 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   caught it if the dependency ordering had been wrong, and confirmed each
   of five commits was independently green rather than merely plausible by
   inspection.
+
+  Refinement (`comp4020-crit7-shitao`, 135h to cutoff): plain `git stash
+  push --keep-index` does NOT touch untracked files — only tracked ones with
+  unstaged changes. Splitting a slice that includes a brand-new file (a new
+  route, a new spec file) needs `-u` too (`git stash push --keep-index -u`),
+  or the new untracked files stay sitting in the working tree right next to
+  whatever got legitimately stashed away. First attempt without `-u`: staged
+  `db.ts` alone, stashed the rest — but the new `spec/move.test.ts` and new
+  `src/pages/api/.../move.ts` (both untracked) weren't stashed, so the test
+  ran against a `mine.astro` reverted to its pre-feature version and failed
+  with a confusing "no move form found," which looked like a real bug in the
+  isolated slice rather than what it actually was: an isolation check that
+  wasn't actually isolated. Always pass `-u` when any file in the not-yet-
+  committed slice is untracked, not just when it's a modification to an
+  existing tracked file.
 - **An SSE (or any pub/sub) route has to subscribe to every event name a
   producer might emit — adding a new producer event without checking the
   consumer's own subscription list is a silent, untyped gap.** Found via a
