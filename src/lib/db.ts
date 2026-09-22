@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import Database from "better-sqlite3";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { type Booking, type Room, bookings, rooms } from "./schema";
@@ -41,6 +41,18 @@ export function listRooms(): Room[] {
 
 export function listBookings(date: string): Booking[] {
   return db.select().from(bookings).where(eq(bookings.date, date)).all();
+}
+
+// Everything a given cookie has booked from today onward, across the whole
+// window — the answer to "wait, what did I book and where," which the grid
+// itself can't show without clicking through up to fourteen date pages.
+export function listBookingsByOwner(ownerToken: string, fromDate: string): Booking[] {
+  return db
+    .select()
+    .from(bookings)
+    .where(and(eq(bookings.ownerToken, ownerToken), gte(bookings.date, fromDate)))
+    .orderBy(bookings.date, bookings.slot)
+    .all();
 }
 
 // Thrown when a booking loses a race for the same room/date/slot — the real
