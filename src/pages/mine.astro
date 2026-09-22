@@ -44,8 +44,10 @@ const error = Astro.url.searchParams.get("error");
         <ul class="mine-list">
           {myBookings.map((booking) => (
             <li>
-              <a href={`/?date=${booking.date}`}>{booking.date}</a>, {booking.slot}, {roomName(booking.roomId)} —
-              booked by {booking.bookedBy}
+              <span>
+                <a href={`/?date=${booking.date}`}>{booking.date}</a>, {booking.slot}, {roomName(booking.roomId)} —
+                booked by {booking.bookedBy}
+              </span>
               <form method="post" action={`/api/bookings/${booking.id}/cancel`}>
                 <input type="hidden" name="returnTo" value="/mine/" />
                 <button type="submit">Cancel</button>
