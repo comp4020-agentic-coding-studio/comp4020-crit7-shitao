@@ -1,0 +1,55 @@
+---
+import { listRooms, searchBookings } from "../lib/db";
+import { today } from "../lib/slots";
+import "../styles.css";
+
+// A plain GET with a query string, not a POST — a search has no side effect
+// to protect against replay/CSRF, and a GET means the result page is a normal
+// bookmarkable/shareable URL like the grid's own `?date=` links.
+const query = Astro.url.searchParams.get("q") ?? "";
+const results = searchBookings(query, today());
+const rooms = listRooms();
+const roomName = (roomId: number) => rooms.find((room) => room.id === roomId)?.name ?? `room ${roomId}`;
+---
+
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Search bookings — Study rooms</title>
+  </head>
+  <body>
+    <nav aria-label="site">
+      <a href="/">Study rooms</a>
+      <a href="/mine/">My bookings</a>
+      <a href="/search/">Search</a>
+      <a href="/readme/">About</a>
+    </nav>
+    <main>
+      <h1>Search bookings</h1>
+      <p>
+        Find whoever's got a room, by name — across the whole two-week window, not just today's grid or your own
+        bookings.
+      </p>
+      <form method="get" action="/search/">
+        <label for="q" class="sr-only">Name to search for</label>
+        <input id="q" name="q" placeholder="Name" value={query} maxlength="80" />
+        <button type="submit">Search</button>
+      </form>
+      {query.trim() !== "" && results.length === 0 && <p>No upcoming bookings match "{query}".</p>}
+      {results.length > 0 && (
+        <ul class="mine-list">
+          {results.map((booking) => (
+            <li>
+              <span>
+                <a href={`/?date=${booking.date}`}>{booking.date}</a>, {booking.slot}, {roomName(booking.roomId)} —
+                booked by {booking.bookedBy}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </main>
+  </body>
+</html>
