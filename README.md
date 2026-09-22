@@ -67,6 +67,16 @@ cancel-then-rebook would produce, on purpose: every open tab already
 listens for both, so there's no third SSE event type to invent or keep in
 sync with a second frontend.
 
+`/mine/` and the grid between them still can't answer "is Priya's meeting
+still at 2pm Thursday" — one shows only your own bookings, the other only
+one date at a time. `/search/` is a plain GET over `?q=`, not a form post: a
+name search has no side effect to protect, so the result page is a normal
+bookmarkable URL, the same shape as the grid's own `?date=` links. It
+requires a non-empty query rather than falling back to listing every
+booking — an empty search box has no reason to exist here, and without that
+guard the page would double as a public directory of everyone's name and
+schedule, which nothing else in this app does.
+
 What's a judgement call, left to the crit: whether the grid reads clearly at
 a glance, whether "book here instead of there" is the right frame for the
 real annoyance, and whether two weeks is the right window — real accounts are
