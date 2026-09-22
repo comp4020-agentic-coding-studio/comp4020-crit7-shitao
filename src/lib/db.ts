@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import Database from "better-sqlite3";
-import { and, eq, gte } from "drizzle-orm";
+import { and, eq, gte, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { type Booking, type Room, bookings, rooms } from "./schema";
@@ -51,6 +51,23 @@ export function listBookingsByOwner(ownerToken: string, fromDate: string): Booki
     .select()
     .from(bookings)
     .where(and(eq(bookings.ownerToken, ownerToken), gte(bookings.date, fromDate)))
+    .orderBy(bookings.date, bookings.slot)
+    .all();
+}
+
+// The grid only shows one date and /mine/ only shows one browser's own
+// bookings — neither answers "is Priya's meeting still at 2pm Thursday," the
+// question that actually needs a name search across the whole window. SQLite's
+// LIKE is case-insensitive for ASCII by default, so no lower() is needed on
+// either side. Requires a non-empty query rather than falling back to "list
+// everything" — an empty search has no reason to exist and would otherwise
+// turn this into a public directory of every name in the system.
+export function searchBookings(query: string, fromDate: string): Booking[] {
+  if (query.trim() === "") return [];
+  return db
+    .select()
+    .from(bookings)
+    .where(and(like(bookings.bookedBy, `%${query.trim()}%`), gte(bookings.date, fromDate)))
     .orderBy(bookings.date, bookings.slot)
     .all();
 }
