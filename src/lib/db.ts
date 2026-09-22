@@ -77,6 +77,44 @@ export function createBooking(input: {
   }
 }
 
+// Moves a booking to a different room/date/slot in one atomic UPDATE, rather
+// than a cancel followed by a fresh create. That difference matters: cancel-
+// then-rebook has a real window where the old slot is already given up and
+// the new one turns out taken, losing the booking entirely. An UPDATE is
+// still checked against the same (room_id, date, slot) unique constraint —
+// SQLite enforces it on UPDATE exactly as it does on INSERT — so if the
+// destination is taken, the statement fails and the original row is
+// untouched: you keep what you had and find out the new slot's gone, instead
+// of holding neither.
+export function moveBooking(
+  id: number,
+  ownerToken: string,
+  next: { roomId: number; date: string; slot: string },
+): { previous: Booking; updated: Booking } | null {
+  const previous = db
+    .select()
+    .from(bookings)
+    .where(and(eq(bookings.id, id), eq(bookings.ownerToken, ownerToken)))
+    .get();
+  if (!previous) return null;
+
+  try {
+    const updated = db
+      .update(bookings)
+      .set({ roomId: next.roomId, date: next.date, slot: next.slot })
+      .where(and(eq(bookings.id, id), eq(bookings.ownerToken, ownerToken)))
+      .returning()
+      .get();
+    return { previous, updated };
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+    if (code === "SQLITE_CONSTRAINT_UNIQUE") {
+      throw new SlotTakenError(`${next.slot} on ${next.date} is already booked`);
+    }
+    throw error;
+  }
+}
+
 // Deletes only if the id and owner token both match — the DB-level guarantee
 // that mirrors the double-booking one: holding the id (guessable, sequential)
 // is never enough on its own to cancel someone else's booking.
