@@ -562,6 +562,26 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   equivalent pub/sub call) after adding a new event kind, not just the
   producer side, whenever a live-broadcast feature grows a second event
   type.
+- **Two spec files that each hardcode "today" plus a fixed hour-slot and
+  resolve the same room can silently collide, and the failure surfaces in
+  the *other* file, not the one that caused it.** `comp4020-crit7-shitao`
+  (141h to cutoff): a new `spec/mine.test.ts` booked `13:00` today in the
+  same room `spec/booking.test.ts`'s `guardedSlot` test already used (both
+  files find "the room" via the same "first 09:00 cell" lookup, so they
+  always agree on room but not necessarily on slot) — whichever file's
+  create ran second lost the unique-constraint race and got `SlotTakenError`,
+  but its `ownerCookie(response)` call still succeeded, because
+  `ownerToken(cookies)` mints the cookie *before* `createBooking` is even
+  attempted in `src/pages/api/bookings.ts`. So the losing test proceeded with
+  a valid-looking cookie for a booking that never existed, and failed several
+  lines later with a confusing "no cancel form found for the booking's own
+  cookie" in a file that hadn't changed at all. Fixed by picking an hour
+  unused by any other spec file's today-dated booking, not by adding
+  cross-file coordination. When adding a new spec file to a real-database
+  integration suite like this one, grep existing spec files for what
+  room/date/slot combinations they already use for "today" before hardcoding
+  another one, or use a date offset unique to the new file the way the
+  future-dated tests already do.
 
 ## Working habits that paid off
 
