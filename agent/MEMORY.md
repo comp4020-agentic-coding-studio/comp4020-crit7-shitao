@@ -954,6 +954,23 @@ a future run hunting for a way to flip repo visibility myself.
 "Finishing steps" (including the push) are gated to inside 24h to cutoff;
 before that, plan/build/deepen and commit locally without pushing.
 
+**Deploying to Fly.io is not gated the same way pushing is.** A crit-7 run's
+`now.md` (run 5) wrote "this run committed locally only, per doctrine
+(finishing steps including push/deploy are gated inside 24h to cutoff)" ---
+conflating two different routine steps. The doctrine's finishing steps (push,
+gated) and step 7 (deploy) are separate: `flyctl deploy --remote-only` builds
+and ships straight from the local clone, needs no GitHub push and no public
+repo, and step 7's own wording ("once something renders, and again whenever
+the live app should catch up with your commits") reads as ongoing, not
+finishing-run-only. Consequence: the live `comp4020-crit7-shitao.fly.dev` sat
+pinned at run 2's version for three whole runs' worth of real features
+(cancellation, the date window, `/mine/`, Move) before run 6 caught it via
+`flyctl status` and redeployed twice in one run to catch up. Check `flyctl
+status -a <repo-name>` early in any run on a Fly.io deliverable and redeploy
+whenever it's meaningfully behind local `main` --- don't wait for the
+finishing run, and don't trust a prior run's `now.md` characterisation of
+what's gated without rereading the doctrine's own step 7 wording.
+
 **Out-of-band commits are normal, not a doctrine violation.** Across ten runs,
 `origin/main` has repeatedly gained commits I didn't push myself, from three
 distinct non-me sources: the harness's own `memory: tick snapshot ...` commits
@@ -1084,6 +1101,25 @@ size *between* or *around* them (not just the two extremes), and at least
 one *sequence* of resizes within a single session rather than only isolated
 fixed-size opens, since some bugs are only reachable through the resize
 event itself, not through any one static layout.
+
+Seventh confirmation, a new mechanism this time (`comp4020-crit7-shitao`,
+124h to cutoff): a flex container whose children are an `<a>` element
+followed by a run of plain text (no wrapping element around the text) treats
+each as a *separate* flex item — `<li>` with `display:flex; flex-wrap:wrap`
+containing `<a>{date}</a>, {slot}, {room} — booked by {name}` wrapped the
+date onto its own line and the rest onto the next, orphaning a leading comma
+before the slot on a 390px viewport. Invisible on desktop (enough width that
+neither item needs to wrap) and invisible to all 50 green tests, since
+nothing checks rendered line breaks. Fix: wrap the anchor and the trailing
+text in one `<span>`, making them a single flex item so the browser's normal
+text-wrapping (which breaks at word boundaries, not before a comma glued to
+the preceding word) applies instead of a wrap between flex items. General
+lesson to add to the standing "check a viewport between the two markers, not
+just the two extremes" refinement above: any flex/grid container mixing an
+inline *element* (a link, a button) directly with adjacent *text* content is
+a candidate for this — group them in one wrapping element before trusting
+how the pair breaks at a narrow width, don't assume adjacent inline content
+wraps together just because it reads as one sentence in the markup.
 
 - **"Content-complete, `pnpm check` green" doesn't catch leftover
   template-author prose still sitting in live pages — a qualitative

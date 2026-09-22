@@ -1,68 +1,59 @@
 # now
 
-**Fifth run for crit-7, 135h to cutoff at start.** Deliverable is
+**Sixth run for crit-7, 124h to cutoff at start.** Deliverable is
 `comp4020-crit7-shitao`: "Build the ANU system you wish existed," brief at
 `https://comp.anu.edu.au/courses/comp4020-agentic-coding-studio/api/crits/07-anu-system.json`.
 Still well inside the 168h window --- not the finishing run, so no
 `PROCESS.md` rewrite, no `reflections/crit-7.md`, no push.
 
-Brief's warning callout (update the `comp4020` plugin, two `claude plugin`
-commands) doesn't apply to this environment: `claude plugin marketplace
-list` returns "No marketplaces configured," so there's no comp4020 plugin
-installed here to update. Not a gap in this run --- just not a thing this
-session has.
+## What this run did
 
-## What this run built
+**Deployed for the first time since run 2.** `flyctl status` showed the live
+app pinned at version 2 (2026-09-21), four runs' worth of real features
+behind (owner-token cancellation, the two-week date window, `/mine/`, the
+in-place Move feature) --- a prior run's `now.md` had conflated "push is
+gated to inside 24h" with "deploy is gated too," but the doctrine's step 7 is
+separate from the finishing-steps push gate: `flyctl deploy` doesn't touch
+GitHub or need the repo public, so there's no reason to withhold it. Redeployed
+twice this run (once at the start to catch up on runs 3--5, once at the end
+after this run's own commits) --- confirmed live both times via `curl` against
+the real `*.fly.dev` URL, not just `flyctl status`.
 
-Editing a booking in place from `/mine/` --- change room/date/slot without
-cancel-and-rebook. Picked this over the other `now.md`-listed candidate
-(cross-window name search for someone else's booking) because it's the one
-with a real correctness story, not just convenience: cancel-then-rebook has
-a genuine window where you've freed the old slot and the new one turns out
-taken, so you lose the booking entirely. An in-place `UPDATE` is checked
-against the same `(room_id, date, slot)` unique constraint on update as on
-insert, so a failed move leaves the original booking untouched.
+**Found and fixed a real mobile-layout bug during the verification pass**
+(`f7d7efe`): `.mine-list li` is a flex container, and the booking's `<a>`
+(date) and the trailing descriptive text were separate flex items --- on a
+390px viewport they wrapped onto separate lines, orphaning a leading comma
+before the slot ("2026-09-23" / ", 13:00, Hancock GSR 1 --- booked by ..."
+on the next line). Fixed by wrapping both in one `<span>`, so it's a single
+flex item that wraps at a normal word boundary instead. Caught by a real
+`agent-browser` pass at 390×844, not by any of the 50 (then 53) green tests
+--- same standing lesson as every prior "content-complete isn't sufficient"
+entry in `MEMORY.md`, reconfirmed on this repo's fifth or sixth distinct bug
+of that shape.
 
-- `src/lib/db.ts`: `moveBooking(id, ownerToken, next)` --- selects the
-  current row (ownership + existence check), then a single `UPDATE ... WHERE
-  id = ? AND owner_token = ?`, catching `SQLITE_CONSTRAINT_UNIQUE` the same
-  way `createBooking` already does. No schema change --- reuses existing
-  columns.
-- `src/pages/api/bookings/[id]/move.ts`: new route, same
-  validation/ownership/whitelist shape as `cancel.ts`. On success emits the
-  *existing* `"cancelled"` event (old snapshot) then `"booking"` event (new
-  snapshot) over the SSE bus --- deliberately reusing the two event types
-  every open tab already listens for, rather than inventing a third
-  "moved" event and a new client-side handler for it.
-- `src/pages/mine.astro`: each booking gets a `<details>`-collapsed "Move"
-  form (room select, native `<input type=date>` bounded to the booking
-  window, slot select), plus four new `?error=` messages
-  (taken/missing/date/notfound) alongside the existing cancel one.
-- `spec/move.test.ts`: four tests --- moves and frees the old cell/fills the
-  new one; refuses a move into a slot someone else holds, leaving both
-  bookings intact; refuses without the owner cookie; refuses a date outside
-  the window. Used dates +5/+10 days out specifically because they're unused
-  by any other spec file's hardcoded today/+3/+7 combinations (grepped
-  first, per the standing collision gotcha in `MEMORY.md`). 50/50 green.
-- `README.md`: describes the feature and the atomicity argument for it.
+**Built the cross-window name search** (`2444e1f`, `45a9328`, `e90cdaa`,
+`6bb06fb`), the deepening candidate the last hand-off named: `/mine/` only
+shows your own bookings and the grid only shows one date, so neither answers
+"is Priya's meeting still at 2pm Thursday." `/search/` is a plain GET over
+`?q=` (no side effect to protect, so a normal bookmarkable URL, same shape as
+the grid's `?date=` links), backed by `searchBookings(query, fromDate)` in
+`db.ts` (SQLite `LIKE` is case-insensitive for ASCII by default, no `lower()`
+needed). Deliberately refuses an empty query rather than listing everything
+--- without that guard the page would double as a public directory of every
+name and schedule in the system, which nothing else here does. Three spec
+tests (`spec/search.test.ts`, using date+8/slot 10:00 and 11:00 --- grepped
+every other spec file's hardcoded date/slot combinations first, per the
+standing collision gotcha): case-insensitive partial match works, no-match
+shows the right message, blank query shows nothing. Four small commits (lib,
+pages+nav, spec, docs), each isolated and verified green via `git stash push
+--keep-index -u` before the next, same pattern as run 5. 53/53 green.
 
-Four scoped commits (`c820b03` lib, `9f0c34a` pages+route, `235a418` spec,
-`bcb49f8` docs), each verified buildable/green in true isolation via `git
-stash push --keep-index -u` before moving to the next --- the `-u` mattered
-this time: the first attempt without it left two new *untracked* files
-(the route, the spec file) sitting in the tree while `mine.astro` got
-stashed away, giving a misleading test failure that looked like a real bug.
-Recorded as a refinement to the existing stash-isolation entry in
-`MEMORY.md`.
-
-Verified with a real-browser pass (`agent-browser`, session
-`crit7-move-verify`, checked `location.href` and `window.innerWidth` before
-trusting anything): booked 09:00 today via the real form, moved it to 11:00
-from `/mine/`'s Move form, confirmed via `curl` of the built HTML that
-09:00 is free again and 11:00 shows the booking, screenshotted `/mine/` and
-the grid at both 1920x1080 and 390x844 (the Move form wraps cleanly on
-mobile, no overflow), no console errors. Server shut down and port
-confirmed free before finishing.
+Verified with a real-browser pass in a named session (`crit7run6`,
+`crit7run6b` --- confirmed `location.href`/`window.innerWidth` before
+trusting anything, per the standing shared-session and viewport gotchas):
+booked, moved, and searched for a booking end to end at both 1920×1080 and
+390×844, no console errors either time. Dev server torn down and port
+confirmed free (`lsof -ti:$PORT`, not `pkill`) after each pass.
 
 ## Next action
 
@@ -70,16 +61,23 @@ Still not the finishing run. What's left from the original scope list:
 
 - **Real accounts** remain the one named gap --- explicitly out of scope,
   per the "no login, a typed name not an account" framing.
-- Candidates for a future deepening pass: a simple name/room search across
-  the window for *someone else's* booking (not just your own, which `/mine/`
-  already covers); or spending a future run purely on the finishing-run
-  checklist dry-run if nothing else surfaces.
-- Nothing currently known broken. Deploy state: still whatever run 2 last
-  pushed live --- this run committed locally only, per doctrine (finishing
-  steps including push/deploy are gated inside 24h to cutoff).
+- No other feature candidates currently queued. A future run could either
+  find a new deepening angle (re-read the brief and the app fresh, or try
+  a cold-read pass over `README.md`/`CLAUDE.md`/the app itself for drift,
+  per the standing "content-complete isn't evidence" and "cold cross-
+  reference read" techniques in `MEMORY.md`) or spend a run purely on a
+  finishing-run checklist dry-run if nothing else surfaces.
+- Nothing currently known broken. Deploy state: live app matches this run's
+  final commit (`6bb06fb`), confirmed via `curl` against
+  `https://comp4020-crit7-shitao.fly.dev/`.
+- **Reminder for whoever deploys next**: deploying (unlike pushing) isn't
+  gated to inside 24h --- do it whenever the live app has drifted meaningfully
+  behind local commits, not just on the finishing run. Check `flyctl status
+  -a comp4020-crit7-shitao` early in a run to see how stale the live version
+  actually is, rather than trusting the last `now.md`'s account of it.
 
 Whichever run is told it's the last one: write `PROCESS.md` for real (cite
-the actual commits across all five runs), write `reflections/crit-7.md`
-(source `title`, "Build the ANU system you wish existed", not a week
+the actual commits across all six runs), write `reflections/crit-7.md`
+(source `title`, "Build the ANU system you wish existed," not a week
 number), re-run `pnpm check:evidence`, then push and redeploy/confirm
 against the live URL.
