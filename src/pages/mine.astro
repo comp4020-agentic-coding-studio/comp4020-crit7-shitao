@@ -1,7 +1,7 @@
 ---
 import { listBookingsByOwner, listRooms } from "../lib/db";
 import { OWNER_COOKIE } from "../lib/owner";
-import { today } from "../lib/slots";
+import { BOOKING_WINDOW_DAYS, SLOTS, addDays, today } from "../lib/slots";
 import "../styles.css";
 
 // The grid only ever shows one date at a time, so finding a booking you
@@ -12,6 +12,8 @@ const token = Astro.cookies.get(OWNER_COOKIE)?.value;
 const myBookings = token ? listBookingsByOwner(token, today()) : [];
 const rooms = listRooms();
 const roomName = (roomId: number) => rooms.find((room) => room.id === roomId)?.name ?? `room ${roomId}`;
+const minDate = today();
+const maxDate = addDays(minDate, BOOKING_WINDOW_DAYS);
 
 const error = Astro.url.searchParams.get("error");
 ---
@@ -32,6 +34,10 @@ const error = Astro.url.searchParams.get("error");
     <main>
       <h1>My bookings</h1>
       {error === "cancel" && <p role="alert">Couldn't cancel that booking — it may already be gone.</p>}
+      {error === "notfound" && <p role="alert">Couldn't find that booking to move — it may already be gone.</p>}
+      {error === "taken" && <p role="alert">Someone booked that slot already — pick another.</p>}
+      {error === "missing" && <p role="alert">Room, date and slot are all required to move a booking.</p>}
+      {error === "date" && <p role="alert">That date isn't bookable — pick one within the next two weeks.</p>}
       {myBookings.length === 0 ? (
         <p>Nothing booked from today onward yet. Bookings you make will show up here.</p>
       ) : (
@@ -44,6 +50,39 @@ const error = Astro.url.searchParams.get("error");
                 <input type="hidden" name="returnTo" value="/mine/" />
                 <button type="submit">Cancel</button>
               </form>
+              <details>
+                <summary>Move</summary>
+                <form method="post" action={`/api/bookings/${booking.id}/move`}>
+                  <input type="hidden" name="returnTo" value="/mine/" />
+                  <label for={`move-room-${booking.id}`}>Room</label>
+                  <select id={`move-room-${booking.id}`} name="roomId">
+                    {rooms.map((room) => (
+                      <option value={room.id} selected={room.id === booking.roomId}>
+                        {room.name}
+                      </option>
+                    ))}
+                  </select>
+                  <label for={`move-date-${booking.id}`}>Date</label>
+                  <input
+                    id={`move-date-${booking.id}`}
+                    type="date"
+                    name="date"
+                    value={booking.date}
+                    min={minDate}
+                    max={maxDate}
+                    required
+                  />
+                  <label for={`move-slot-${booking.id}`}>Slot</label>
+                  <select id={`move-slot-${booking.id}`} name="slot">
+                    {SLOTS.map((slot) => (
+                      <option value={slot} selected={slot === booking.slot}>
+                        {slot}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="submit">Save</button>
+                </form>
+              </details>
             </li>
           ))}
         </ul>
