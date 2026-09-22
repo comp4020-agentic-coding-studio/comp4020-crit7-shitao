@@ -116,3 +116,24 @@ td form input {
   font-weight: 600;
   color: #a30000;
 }
+
+.mine-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.mine-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid #ccc;
+}
+
+.mine-list form {
+  margin: 0;
+}
