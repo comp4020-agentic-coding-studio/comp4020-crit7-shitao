@@ -46,6 +46,15 @@ render) and `/api/bookings` (which date it'll accept) check against, so a
 hand-built request past the window is refused the same way an unlisted slot
 already was.
 
+Since the grid only ever renders one date, finding a booking you made three
+days ago meant clicking through the date picker one day at a time — so
+`/mine/` reads the same owner token across the whole window instead of one
+date, and lists everything that cookie has booked from today onward, oldest
+first. Cancelling from there uses the same `cancelBooking` gate as the grid's
+own cancel button; the only new thing is where it redirects back to
+afterwards, and that's an explicit whitelist of the two pages it can come
+from, not whatever a form happens to send.
+
 What's a judgement call, left to the crit: whether the grid reads clearly at
 a glance, whether "book here instead of there" is the right frame for the
 real annoyance, and whether two weeks is the right window — real accounts are
