@@ -135,6 +135,29 @@ describe("moving a booking", () => {
     expect(await mineAfter.text()).toContain(`${nearDate}</a>, 15:00`);
   });
 
+  it("refuses a move to a room id that doesn't exist, rather than a raw 500", async () => {
+    const bookedBy = `move bogus room probe ${process.hrtime.bigint()}`;
+
+    const booked = await post(
+      "/api/bookings",
+      new URLSearchParams({ roomId, date: nearDate, slot: "10:00", bookedBy }),
+    );
+    const cookie = ownerCookie(booked);
+
+    const mine = await fetch(new URL("/mine/", baseUrl), { headers: { cookie } });
+    const moveAction = moveActionAfter(await mine.text(), bookedBy);
+
+    const rejected = await post(
+      moveAction,
+      new URLSearchParams({ roomId: "999999", date: farDate, slot: "09:00", returnTo: "/mine/" }),
+      cookie,
+    );
+    expect(rejected.headers.get("location")).toBe("/mine/?error=missing");
+
+    const mineAfter = await fetch(new URL("/mine/", baseUrl), { headers: { cookie } });
+    expect(await mineAfter.text()).toContain(`${nearDate}</a>, 10:00`);
+  });
+
   it("rejects a move to a date outside the two-week window, leaving the booking unchanged", async () => {
     const bookedBy = `move out of range probe ${process.hrtime.bigint()}`;
 

@@ -229,6 +229,18 @@ describe("booking", () => {
     expect(await page.text()).not.toContain(`Booked — ${bookedBy}`);
   });
 
+  it("refuses a booking for a room id that doesn't exist, rather than a raw 500", async () => {
+    const bookedBy = `bogus room probe ${process.hrtime.bigint()}`;
+    const res = await post(
+      "/api/bookings",
+      new URLSearchParams({ roomId: "999999", date, slot, bookedBy }),
+    );
+    expect(res.headers.get("location")).toBe("/?error=missing");
+
+    const page = await fetch(baseUrl);
+    expect(await page.text()).not.toContain(`Booked — ${bookedBy}`);
+  });
+
   it("falls back to today when the date query param is out of range or malformed", async () => {
     const page = await fetch(new URL("/?date=not-a-date", baseUrl));
     const text = await page.text();

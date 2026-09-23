@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { SlotTakenError, moveBooking } from "../../../../lib/db";
+import { SlotTakenError, listRooms, moveBooking } from "../../../../lib/db";
 import { bus } from "../../../../lib/events";
 import { OWNER_COOKIE } from "../../../../lib/owner";
 import { SLOTS, isBookableDate } from "../../../../lib/slots";
@@ -25,7 +25,20 @@ export const POST: APIRoute = async ({ params, request, cookies, redirect }) => 
   const date = String(form.get("date") ?? "");
   const slot = String(form.get("slot") ?? "");
 
-  if (!id || !token || !roomId || !date || !slot || !(SLOTS as readonly string[]).includes(slot)) {
+  // Same reasoning as bookings.ts: the form only ever sends a real room's id
+  // via its own <select>, but a hand-built request could send anything, and
+  // an unvalidated roomId would otherwise hit the database's foreign-key
+  // constraint as a raw 500 instead of this redirect.
+  const validRoomIds = new Set(listRooms().map((room) => room.id));
+  if (
+    !id ||
+    !token ||
+    !roomId ||
+    !date ||
+    !slot ||
+    !validRoomIds.has(roomId) ||
+    !(SLOTS as readonly string[]).includes(slot)
+  ) {
     return redirect(`${returnTo}?error=missing`, 303);
   }
   if (!isBookableDate(date)) {

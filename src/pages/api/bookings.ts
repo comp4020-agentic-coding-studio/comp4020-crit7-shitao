@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { ownerToken } from "../../lib/owner";
-import { SlotTakenError, createBooking } from "../../lib/db";
+import { SlotTakenError, createBooking, listRooms } from "../../lib/db";
 import { bus } from "../../lib/events";
 import { SLOTS, isBookableDate } from "../../lib/slots";
 
@@ -19,11 +19,22 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     .trim()
     .slice(0, 80);
 
-  // The form only ever sends one of the fixed hourly slots via a hidden
-  // input, but nothing stops a hand-built request sending anything else —
-  // and a booking's slot/roomId end up broadcast to every other open tab
-  // over SSE, so an unvalidated value here isn't just a display glitch.
-  if (!roomId || !date || !slot || !bookedBy || !(SLOTS as readonly string[]).includes(slot)) {
+  // The form only ever sends one of the fixed hourly slots (or a real room's
+  // id) via a hidden input, but nothing stops a hand-built request sending
+  // anything else — and a booking's slot/roomId end up broadcast to every
+  // other open tab over SSE, so an unvalidated value here isn't just a
+  // display glitch. Without this check, a bogus roomId reached the database's
+  // own foreign-key constraint instead of this redirect, surfacing as a raw
+  // 500 rather than the same friendly error every other bad field gets.
+  const validRoomIds = new Set(listRooms().map((room) => room.id));
+  if (
+    !roomId ||
+    !date ||
+    !slot ||
+    !bookedBy ||
+    !validRoomIds.has(roomId) ||
+    !(SLOTS as readonly string[]).includes(slot)
+  ) {
     return redirect("/?error=missing", 303);
   }
 
