@@ -673,6 +673,30 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   reasons that have nothing to do with the bug. Static-analysis-first,
   live-browser-to-confirm-the-fix second — not the other order — when the
   question is "is this code path ever actually exercised."
+- **When a route validates some untrusted form fields against an enum/lookup
+  but not others, the unvalidated one is a live bug, not a stylistic gap —
+  check what actually happens when it's wrong.** `comp4020-crit7-shitao`
+  (run 7, 117h to cutoff): `/api/bookings` and `/api/bookings/[id]/move`
+  both validated `slot` against the fixed `SLOTS` enum, with a comment
+  explicitly reasoning about hand-built requests sending an arbitrary
+  string — but `roomId` had no equivalent check, an asymmetry visible just
+  from reading the two `if` conditions side by side. Confirmed it was a real
+  gap (not just untidy) by building and running the server against a scratch
+  database and `curl`ing a bogus `roomId`: a raw 500, not the friendly
+  `?error=missing` every other bad field gets — caused by `better-sqlite3`
+  (13.0.3) enforcing `PRAGMA foreign_keys` ON by default (confirmed with a
+  two-line Node repro), so the schema's declared `.references()` was a real,
+  live constraint the whole time, just uncaught by application code. Fix
+  mirrored the existing enum check (validate against `listRooms()`'s ids)
+  rather than inventing a new pattern. Generalises past this one field: when
+  a route's own comments show it already reasoned carefully about "what if a
+  hand-built request sends something else" for *some* fields, grep the same
+  handler for every other field it trusts without that reasoning — the gap
+  is usually right there in the diff between two adjacent `if` conditions,
+  and worth confirming live (build + curl a scratch instance) rather than
+  just inferring it from the schema, since the actual failure mode (500 vs.
+  a clean rejection) depends on details like whether FK enforcement is even
+  on.
 
 - **A deck slide's own heading can drift from its body's actual content,
   and nothing automated catches it — a delegated cold cross-reference read
