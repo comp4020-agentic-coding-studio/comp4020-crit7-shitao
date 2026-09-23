@@ -1,6 +1,6 @@
 # now
 
-**Seventh run for crit-7, 117h to cutoff at start.** Deliverable is
+**Eighth run for crit-7, 111h to cutoff at start.** Deliverable is
 `comp4020-crit7-shitao`: "Build the ANU system you wish existed," brief at
 `https://comp.anu.edu.au/courses/comp4020-agentic-coding-studio/api/crits/07-anu-system.json`.
 Still well inside the 168h window --- not the finishing run, so no
@@ -8,54 +8,57 @@ Still well inside the 168h window --- not the finishing run, so no
 
 ## What this run did
 
-**Found and fixed a real asymmetric-validation bug** (`c176080`): both
-`/api/bookings` and `/api/bookings/[id]/move` validated `slot` against the
-fixed `SLOTS` enum (their own comments explicitly reasoned about "nothing
-stops a hand-built request sending anything else") but never applied the
-same check to `roomId` --- confirmed via `curl` against a scratch build
-that a bogus `roomId` reached the database's own foreign-key constraint
-unvalidated and surfaced as a raw 500, not the same friendly
-`?error=missing` redirect every other bad field already gets. (Confirmed
-along the way that this version of `better-sqlite3`, 13.0.3, enforces
-`PRAGMA foreign_keys` on by default --- so the FK constraint was real, just
-uncaught.) Fixed by checking `roomId` against `listRooms()` in both routes,
-same shape as the existing slot-enum check. Two new spec tests (one per
-route) assert the friendly redirect, not a 500. 55/55 green. Verified twice:
-once via raw `curl` against a scratch-database build before AND after the
-fix (500 → 303 `?error=missing`), once via the full `pnpm check` suite.
+**Found and fixed a real coverage gap** (`22bb0f8`): `spec/routes.ts` --- the
+list `spec/invariants.test.ts` runs the accessibility/landmark/viewport/axe
+checks against --- still only had `["/", "/mine/", "/readme/"]`, three
+commits after `/search/` shipped (`45a9328`). `spec/routes.ts`'s own header
+comment says "add it here or the invariants stop covering it," and nobody
+had. `pnpm check` stayed green the whole time because the existing tests for
+the other three routes don't care that a fourth exists. Fixed by adding
+`/search/` to the array; test count went 55 → 63, all green (the eight new
+invariant checks for that route all pass as-is, so no other fix was needed).
+See `MEMORY.md` for the generalised lesson (coverage arrays with a
+self-documented update rule are a distinct silent-drift risk from the
+already-documented SSE pub/sub one).
 
-**Real-browser verification pass** at both marking viewports (1920×1080,
-390×844, named session `crit7run7`, confirmed `window.innerWidth`/`href`
-before trusting anything per the standing viewport gotchas): grid, `/mine/`,
-and `/search/` all render cleanly with a real booking in the list at mobile
-width (the exact shape that broke in run 6 --- confirmed still fixed, no
-orphaned comma). No console errors anywhere. Preview server torn down and
-port confirmed free via `lsof` after.
+**Real-browser verification pass**, this time deliberately at a viewport
+*between* the two marking extremes (1280×720, not yet tried on this specific
+repo per the standing "check a size between the markers too" refinement) plus
+the two extremes themselves (390×844, 1920×1080), named session `crit7run8`.
+Made a real booking, searched for it from `/search/`, opened the Move
+disclosure on `/mine/` at 390px, cancelled it to clean up. No console errors,
+no layout breakage, no orphaned-comma regression at mobile width. Preview
+server torn down and port confirmed free via `lsof` after (used
+`nohup ... & disown` + `lsof -ti:4321` to start/stop, not `pkill`, per the
+standing gotcha that `pkill -f` can kill the whole Bash tool call in this
+sandbox).
 
-**Deployed** (`flyctl deploy --remote-only --ha=false -a comp4020-crit7-shitao`):
-live app was pinned at version 4 (run 6's final commit) at the start of this
-run; redeployed after this run's fix and confirmed via `curl` against the
-real `*.fly.dev` URL that the roomId fix is live (bogus roomId now returns
-303 `?error=missing`, not a 500).
+**Did not redeploy.** `flyctl status` showed the live app already at version
+5, matching run 7's last commit (`c176080`) before this run started. This
+run's own commit (`22bb0f8`) only touches `spec/routes.ts` --- a test-time
+file, not part of the `astro build` output --- so the live app's actual
+behaviour is unchanged and redeploying would ship byte-identical code.
 
 ## Next action
 
 Still not the finishing run. What's left from the original scope list:
 
 - **Real accounts** remain the one named gap --- explicitly out of scope,
-  per the "no login, a typed name not an account" framing.
-- No other feature candidates currently queued after a full read of every
-  lib/page/API file this run (didn't find a second bug of this shape ---
-  `bookedBy`, `date`, and `slot` are all validated everywhere they're used;
-  `roomId` was the one asymmetry). A future run could re-read fresh, or
-  spend a run on the finishing-run checklist dry-run if nothing else
-  surfaces.
-- Nothing currently known broken. Deploy state: live app matches this run's
-  final commit (`c176080`), confirmed via `curl` against
-  `https://comp4020-crit7-shitao.fly.dev/`.
+  per the "no login, a typed name not an account" framing in `README.md`.
+- No new bug found in the app's own behaviour this run (the one found was a
+  test-coverage gap, not a shipped-behaviour bug) --- `src/lib/*.ts` and
+  every `src/pages/**` file were already re-read fresh in run 7 with nothing
+  found there. A future run could try a different cold-read framing (per the
+  assignment-2 "vary the framing, not just rerun the same read" lesson) if
+  it wants to keep hunting, or spend a run on the finishing-run checklist
+  dry-run if nothing else surfaces.
+- Nothing currently known broken. Deploy state: live app is version 5,
+  matching commit `c176080` (run 7's fix) --- one commit behind local `main`
+  (`22bb0f8`), but that commit has no runtime effect so this isn't a real gap
+  to close before the next run that does change `src/`.
 
 Whichever run is told it's the last one: write `PROCESS.md` for real (cite
-the actual commits across all seven runs), write `reflections/crit-7.md`
+the actual commits across all eight runs), write `reflections/crit-7.md`
 (source `title`, "Build the ANU system you wish existed," not a week
 number), re-run `pnpm check:evidence`, then push and redeploy/confirm
 against the live URL.

@@ -509,6 +509,29 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   markdown syntax before trusting it'll render — the safe assumption is
   "plain text only" unless a component is confirmed to markdown-render that
   specific field.
+- **A coverage array with its own "add it here or you lose coverage" comment
+  can silently drift the moment a new page ships, and nothing but a fresh
+  full-source read catches it.** `comp4020-crit7-shitao`'s `spec/routes.ts`
+  (`export const ROUTES = [...]`, run against every route by
+  `spec/invariants.test.ts` for lang/title/viewport/nav/single-h1/alt-text/
+  axe) carries exactly that comment: "When you add a page, add its route
+  here, or the invariants stop covering it." Found (run 8, 111h to cutoff)
+  that `/search/` had shipped three commits earlier (`45a9328`) without ever
+  being added — `git log --oneline -- spec/routes.ts` showed the file
+  untouched since before the search page existed. `pnpm check` stayed green
+  the whole time, because the existing invariant tests for the *other* three
+  routes all still pass; nothing fails when a route is simply absent from
+  the loop that generates test cases. Same root shape as the standing SSE
+  pub/sub gap (a list that's supposed to enumerate "every X" drifting out of
+  sync with the actual X's, invisible to every check because the check only
+  runs against what's already listed) — but the mechanism here is a plain
+  array literal, not an event-name string, so it's worth its own entry:
+  whenever a repo has a file whose own comment says "keep this list current
+  when you add a page/route/event," grep every route-defining file
+  (`src/pages/**/*.astro`, `src/pages/api/**/*.ts`) against that list's
+  literal contents after any run that added a page, rather than trusting the
+  list was kept in sync as a matter of course.
+  [`22bb0f8`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit7-shitao/commit/22bb0f8)
 - **`check-evidence.ts` doesn't enforce PROCESS.md's 400–600 word guidance at
   all** — read its full source (assignment-2, 45h to cutoff) rather than
   assuming: it only checks that cited commit SHAs resolve and that the
