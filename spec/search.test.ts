@@ -54,4 +54,17 @@ describe("search", () => {
     expect(text).not.toContain(bookedBy);
     expect(text).not.toContain("No upcoming bookings match");
   });
+
+  it("treats a bare SQL LIKE wildcard as a literal character, not a directory-listing bypass", async () => {
+    const bookedBy = `Search wildcard-guard probe ${process.hrtime.bigint()}`;
+    await post("/api/bookings", new URLSearchParams({ roomId, date, slot: "12:00", bookedBy }));
+
+    const percent = await fetch(new URL(`/search/?q=${encodeURIComponent("%")}`, baseUrl));
+    const percentText = await percent.text();
+    expect(percentText).not.toContain(bookedBy);
+
+    const underscore = await fetch(new URL(`/search/?q=${encodeURIComponent("_")}`, baseUrl));
+    const underscoreText = await underscore.text();
+    expect(underscoreText).not.toContain(bookedBy);
+  });
 });

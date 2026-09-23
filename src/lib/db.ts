@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import Database from "better-sqlite3";
-import { and, eq, gte, like } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { type Booking, type Room, bookings, rooms } from "./schema";
@@ -55,6 +55,16 @@ export function listBookingsByOwner(ownerToken: string, fromDate: string): Booki
     .all();
 }
 
+// SQL LIKE treats %, _ and \ as pattern metacharacters, not literal text —
+// unescaped, a query of just "%" (or "_") matches every row regardless of
+// name, which is exactly the directory leak the empty-query guard below
+// exists to prevent. Escaping them here (and declaring \ as the escape
+// character in the query itself) makes a search for "%" look for a literal
+// percent sign instead of "anything."
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
 // The grid only shows one date and /mine/ only shows one browser's own
 // bookings — neither answers "is Priya's meeting still at 2pm Thursday," the
 // question that actually needs a name search across the whole window. SQLite's
@@ -63,11 +73,13 @@ export function listBookingsByOwner(ownerToken: string, fromDate: string): Booki
 // everything" — an empty search has no reason to exist and would otherwise
 // turn this into a public directory of every name in the system.
 export function searchBookings(query: string, fromDate: string): Booking[] {
-  if (query.trim() === "") return [];
+  const trimmed = query.trim();
+  if (trimmed === "") return [];
+  const pattern = `%${escapeLikePattern(trimmed)}%`;
   return db
     .select()
     .from(bookings)
-    .where(and(like(bookings.bookedBy, `%${query.trim()}%`), gte(bookings.date, fromDate)))
+    .where(and(sql`${bookings.bookedBy} LIKE ${pattern} ESCAPE '\\'`, gte(bookings.date, fromDate)))
     .orderBy(bookings.date, bookings.slot)
     .all();
 }
