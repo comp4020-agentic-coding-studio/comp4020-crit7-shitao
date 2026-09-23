@@ -721,6 +721,29 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   a clean rejection) depends on details like whether FK enforcement is even
   on.
 
+- **An "empty input" guard on a search/filter feature doesn't neutralise the
+  underlying query language's own wildcard characters — a non-empty query
+  can still trigger the exact "list everything" leak the guard was meant to
+  prevent.** `comp4020-crit7-shitao` (run 9, 100h to cutoff): `searchBookings`
+  refused an empty query with a comment explicitly reasoning about a
+  "public directory of every name in the system," but `like(bookings.bookedBy,
+  "%" + query + "%")` with `query = "%"` builds the pattern `%%%` — SQL LIKE
+  wildcards, not literal text — which matches every row regardless of name,
+  same leak, non-empty input. `_` (single-char wildcard) has the identical
+  effect. Confirmed live before fixing: built a scratch server, booked "Alice
+  Wonderland," searched `%` and `_`, got her back both times despite no
+  literal match. Fixed by escaping `\`, `%`, `_` in the query and adding an
+  `ESCAPE '\\'` clause (drizzle-orm's `like()` helper has no escape
+  parameter, so this needs a raw `sql` template instead). Same root shape as
+  the roomId/slot asymmetry above — a route reasoning carefully about one
+  failure mode (empty string) while a sibling failure mode in the same
+  input (the query language's own metacharacters) goes unguarded — but a new
+  *mechanism*: the gap isn't between two different fields, it's between two
+  different senses of "empty" for one field. Generalises to any
+  LIKE/glob/regex-backed search or filter: check what the pattern's own
+  wildcard characters do when submitted as the entire query, not just
+  whether a blank query is rejected.
+
 - **A deck slide's own heading can drift from its body's actual content,
   and nothing automated catches it — a delegated cold cross-reference read
   does.** `pnpm check`'s deck validator (`astromotion`) checks structural
