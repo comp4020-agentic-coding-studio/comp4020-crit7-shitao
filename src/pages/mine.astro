@@ -57,32 +57,38 @@ const error = Astro.url.searchParams.get("error");
                 <summary>Move</summary>
                 <form method="post" action={`/api/bookings/${booking.id}/move`}>
                   <input type="hidden" name="returnTo" value="/mine/" />
-                  <label for={`move-room-${booking.id}`}>Room</label>
-                  <select id={`move-room-${booking.id}`} name="roomId">
-                    {rooms.map((room) => (
-                      <option value={room.id} selected={room.id === booking.roomId}>
-                        {room.name}
-                      </option>
-                    ))}
-                  </select>
-                  <label for={`move-date-${booking.id}`}>Date</label>
-                  <input
-                    id={`move-date-${booking.id}`}
-                    type="date"
-                    name="date"
-                    value={booking.date}
-                    min={minDate}
-                    max={maxDate}
-                    required
-                  />
-                  <label for={`move-slot-${booking.id}`}>Slot</label>
-                  <select id={`move-slot-${booking.id}`} name="slot">
-                    {SLOTS.map((slot) => (
-                      <option value={slot} selected={slot === booking.slot}>
-                        {slot}
-                      </option>
-                    ))}
-                  </select>
+                  <span class="field">
+                    <label for={`move-room-${booking.id}`}>Room</label>
+                    <select id={`move-room-${booking.id}`} name="roomId">
+                      {rooms.map((room) => (
+                        <option value={room.id} selected={room.id === booking.roomId}>
+                          {room.name}
+                        </option>
+                      ))}
+                    </select>
+                  </span>
+                  <span class="field">
+                    <label for={`move-date-${booking.id}`}>Date</label>
+                    <input
+                      id={`move-date-${booking.id}`}
+                      type="date"
+                      name="date"
+                      value={booking.date}
+                      min={minDate}
+                      max={maxDate}
+                      required
+                    />
+                  </span>
+                  <span class="field">
+                    <label for={`move-slot-${booking.id}`}>Slot</label>
+                    <select id={`move-slot-${booking.id}`} name="slot">
+                      {SLOTS.map((slot) => (
+                        <option value={slot} selected={slot === booking.slot}>
+                          {slot}
+                        </option>
+                      ))}
+                    </select>
+                  </span>
                   <button type="submit">Save</button>
                 </form>
               </details>

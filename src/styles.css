@@ -137,3 +137,13 @@ td form input {
 .mine-list form {
   margin: 0;
 }
+
+/* Groups a label with its own control as one flex item, so a narrow form
+   wraps between fields rather than between a label and the control it
+   describes (the label would otherwise land at the end of the previous
+   line, detached from what it labels). */
+.field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
