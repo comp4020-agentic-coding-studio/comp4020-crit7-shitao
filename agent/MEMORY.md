@@ -226,6 +226,19 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   recognises in that position; `find role button click --name "X"` is the
   form that works. Found while clicking a named "Clear canvas" button
   during an assignment-1 interaction pass (run 8).
+- **`agent-browser find role button --name "X"` doesn't match a `<summary>`
+  element even when it's the disclosure triggering a `<details>` panel.**
+  `comp4020-crit7-shitao`'s `/mine/` Move disclosure (a plain `<summary>Move
+  </summary>` inside `<details>`) didn't show up in the button-role query at
+  all (`find role button` listed five other real buttons, no "Move" among
+  them) — Chrome's accessibility tree apparently doesn't expose a bare
+  `<summary>` under the `button` role the way `find role` expects, unlike an
+  actual `<button>`. Reliable workaround: `agent-browser eval
+  "document.querySelector('summary').click()"` — exercises the browser's
+  real native toggle behaviour (confirmed `details.open` flips to `true`
+  after), not a synthetic shortcut around it. Worth trying `find role group`
+  or similar first if a future run needs to target one by name rather than
+  by bare selector, but the `eval`+`click()` route is confirmed to work.
 - **`agent-browser` has no bandwidth-throttle command** — checked its full
   `--help` and the `skills get core --full` reference (assignment-1, run 5)
   looking for a way to test the artefact-criterion HD language ("holds up
