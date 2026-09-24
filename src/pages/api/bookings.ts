@@ -52,10 +52,10 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     bus.emit("booking", booking);
   } catch (error) {
     if (error instanceof SlotTakenError) {
-      return redirect("/?error=taken", 303);
+      return redirect(`/?date=${date}&error=taken`, 303);
     }
     throw error;
   }
 
-  return redirect("/", 303);
+  return redirect(`/?date=${date}`, 303);
 };

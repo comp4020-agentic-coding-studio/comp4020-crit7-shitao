@@ -52,7 +52,7 @@ describe("booking", () => {
       new URLSearchParams({ roomId, date, slot, bookedBy }),
     );
     expect(res.status).toBe(303);
-    expect(res.headers.get("location")).toBe("/");
+    expect(res.headers.get("location")).toBe(`/?date=${date}`);
 
     const page = await fetch(baseUrl);
     expect(await page.text()).toContain(`Booked — ${bookedBy}`);
@@ -68,13 +68,13 @@ describe("booking", () => {
       new URLSearchParams({ roomId, date, slot: clashSlot, bookedBy: first }),
     );
     expect(ok.status).toBe(303);
-    expect(ok.headers.get("location")).toBe("/");
+    expect(ok.headers.get("location")).toBe(`/?date=${date}`);
 
     const clash = await post(
       "/api/bookings",
       new URLSearchParams({ roomId, date, slot: clashSlot, bookedBy: second }),
     );
-    expect(clash.headers.get("location")).toBe("/?error=taken");
+    expect(clash.headers.get("location")).toBe(`/?date=${date}&error=taken`);
 
     // the first booking still stands; the second never happened
     const page = await fetch(baseUrl);
@@ -204,6 +204,10 @@ describe("booking", () => {
       new URLSearchParams({ roomId, date: futureDate, slot: futureSlot, bookedBy }),
     );
     expect(res.status).toBe(303);
+    // the redirect has to land back on the date just booked, not today's —
+    // otherwise the booker who was looking at a future date gets bounced to a
+    // page that shows no sign their booking worked
+    expect(res.headers.get("location")).toBe(`/?date=${futureDate}`);
 
     const page = await fetch(new URL(`/?date=${futureDate}`, baseUrl));
     expect(await page.text()).toContain(`Booked — ${bookedBy}`);
