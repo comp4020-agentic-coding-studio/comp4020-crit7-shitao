@@ -93,6 +93,7 @@ const error = Astro.url.searchParams.get("error");
                           <span>Booked — {booking.bookedBy}</span>
                           {myToken && booking.ownerToken === myToken && (
                             <form method="post" action={`/api/bookings/${booking.id}/cancel`}>
+                              <input type="hidden" name="date" value={date} />
                               <button type="submit">Cancel</button>
                             </form>
                           )}

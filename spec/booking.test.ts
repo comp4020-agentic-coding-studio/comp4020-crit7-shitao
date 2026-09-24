@@ -217,6 +217,37 @@ describe("booking", () => {
     expect(await todayPage.text()).not.toContain(`Booked — ${bookedBy}`);
   });
 
+  it("cancelling from the grid on a future date lands back on that same date", async () => {
+    const bookedBy = `future cancel probe ${process.hrtime.bigint()}`;
+    const futureSlot = "16:00";
+    const future = new Date(`${date}T00:00:00Z`);
+    future.setUTCDate(future.getUTCDate() + 8);
+    const futureDate = future.toISOString().slice(0, 10);
+
+    const booked = await post(
+      "/api/bookings",
+      new URLSearchParams({ roomId, date: futureDate, slot: futureSlot, bookedBy }),
+    );
+    const cookie = ownerCookie(booked);
+
+    const owned = await fetch(new URL(`/?date=${futureDate}`, baseUrl), { headers: { cookie } });
+    const ownedHtml = await owned.text();
+    const cellMatch = ownedHtml.match(
+      new RegExp(`data-room="${roomId}" data-slot="${futureSlot}"[\\s\\S]*?action="(/api/bookings/\\d+/cancel)"`),
+    );
+    if (!cellMatch) throw new Error("no cancel form found for the booking's own cookie");
+
+    // the grid's cancel form carries the date it's showing, same as its
+    // booking form beside it — without that, cancelling bounces back to
+    // today's grid instead of the date the booker was actually looking at
+    const cancelled = await post(cellMatch[1], new URLSearchParams({ date: futureDate }), cookie);
+    expect(cancelled.status).toBe(303);
+    expect(cancelled.headers.get("location")).toBe(`/?date=${futureDate}`);
+
+    const page = await fetch(new URL(`/?date=${futureDate}`, baseUrl));
+    expect(await page.text()).not.toContain(`Booked — ${bookedBy}`);
+  });
+
   it("refuses a booking for a date outside the two-week window", async () => {
     const bookedBy = `out of range probe ${process.hrtime.bigint()}`;
     const tooFar = new Date(`${date}T00:00:00Z`);
