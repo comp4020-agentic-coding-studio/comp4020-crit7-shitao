@@ -1,6 +1,6 @@
 # now
 
-**Ninth run for crit-7, 100h to cutoff at start.** Deliverable is
+**Tenth run for crit-7, 93h to cutoff at start.** Deliverable is
 `comp4020-crit7-shitao`: "Build the ANU system you wish existed," brief at
 `https://comp.anu.edu.au/courses/comp4020-agentic-coding-studio/api/crits/07-anu-system.json`.
 Still well inside the 168h window --- not the finishing run, so no
@@ -8,64 +8,68 @@ Still well inside the 168h window --- not the finishing run, so no
 
 ## What this run did
 
-**Found and fixed a real privacy bug** (`b93b144`): `searchBookings`'s
-empty-query guard ("an empty search would turn this into a public directory
-of every name in the system," per its own comment) didn't stop a query of
-just `%` or `_` from doing exactly that --- SQL LIKE treats those as
-wildcards, not literal text, so `like(bookings.bookedBy, "%" + query + "%")`
-with `query = "%"` becomes the pattern `%%%`, which matches every row
-regardless of name. Verified live against a scratch server (booked "Alice
-Wonderland", searched `%`/`_`, got her back both times) before touching code
---- not just reasoned about it. Fixed by escaping `\`, `%`, `_` in the query
-and adding an explicit `ESCAPE '\'` clause via a raw `sql` template (drizzle's
-`like()` helper has no escape option), and added a regression test
-(`spec/search.test.ts`) alongside the existing blank-query test. All 64 tests
-green (63 before, the new one is the 64th). This is a new *bug shape* worth
-generalising: an "empty input" guard on a search/filter feature doesn't
-imply the underlying query language's own wildcard/metacharacter set is also
-neutralised --- check both, not just the empty-string case, for anything
-built on LIKE/regex/glob-style matching. Worth adding to `MEMORY.md` proper
-next run if this pattern recurs elsewhere.
+Took stock (git log, `pnpm check` --- 64/64 green, `flyctl status` --- app
+was `stopped` but that's just `auto_stop_machines`/`min_machines_running=0`
+in `fly.toml`, confirmed fine by a `curl` waking it to a real 200). Re-read
+`db.ts` and all four API routes fresh, applying run 9's suggested framing
+("read every route's input-validation asymmetry as a class") --- found
+nothing new; roomId/slot/date are now validated symmetrically everywhere,
+`bookedBy` is always rendered through Astro's auto-escaping or
+`textContent`, never `innerHTML`, and the one raw-string `querySelector`
+build (index.astro's SSE handlers) can't actually receive an unvalidated
+slot/roomId since both are enum/FK-checked before a row is ever created.
+No bug this pass from that angle.
 
-**Deployed the fix** (`flyctl deploy --remote-only --ha=false`) since it's a
-real runtime-behaviour change, not a test-only commit like run 8's --- per
-doctrine step 7, deploying isn't gated to the finishing run. Confirmed live:
-`curl` a bare `%` against the deployed `/search/` returns "No upcoming
-bookings match" instead of leaking a booking. Made one real test booking on
-the *live* app to prove this (couldn't verify the live deploy any other
-way), then cancelled it via its owner cookie afterward so no junk booking is
-sitting on the live app for the crit session --- confirmed gone via
-`/mine/` with that same cookie before moving on.
+**Found and fixed a real layout bug via the real-browser pass** (`837a441`):
+`/mine/`'s Move form (`label, select, label, input[date], label, select,
+button`, seven flat children of the shared `flex-wrap` form rule) wrapped
+each child independently at 390px, orphaning "Date" at the end of the Room
+line and "Slot" at the end of the Date line --- each label visually
+detached from the control it names. `pnpm check` was green the whole time;
+only caught by actually expanding the `<details>` Move panel and
+screenshotting at the mobile marking viewport, not just loading the page.
+Same root shape as the standing "flex/grid container mixing an inline
+element with adjacent text" bug class already in `MEMORY.md` (run 7's
+comma-orphan bug), extended to a label+control pair rather than a
+link+text pair --- see `MEMORY.md`'s new eighth confirmation for the full
+writeup. Fixed by wrapping each label+control in a `<span class="field">`.
+Verified end-to-end in a real browser, named session (`crit7run10`): booked
+a real slot on a scratch dev server (isolated `DATABASE_PATH`, port 4790),
+drove Move (changed slot 09:00 -> 11:00, confirmed the redirect and the new
+row), drove Search (found the booking by name), confirmed the fix at both
+1920x1080 and 390x844, then cancelled the scratch booking and killed the
+scratch server (`lsof -ti:4790` empty afterward, not just trusting exit
+codes).
 
-**Real-browser pass** on `/search/` at both marking viewports (1920×1080,
-390×844), named session `crit7run9`: made a real booking through the UI
-(`find role textbox fill --name ... ` then `find role button click --name
-"Book"`), confirmed the wildcard guard visually, screenshotted both
-viewports (clean, no orphaned text, no console errors), closed the session,
-killed the scratch server, verified the port was free after.
+**Deployed and verified live** (`flyctl deploy --remote-only --ha=false`):
+confirmed the live app serves the fixed layout by making one real booking
+on `https://comp4020-crit7-shitao.fly.dev/`, screenshotting the expanded
+Move panel at 390x844 (labels correctly beside their controls), then
+cancelling that booking and confirming `/mine/` shows "Nothing booked" ---
+no junk booking left on the live app.
 
 ## Next action
 
-- **Real accounts** remain the one named out-of-scope gap (README says so
-  explicitly).
-- This run's bug was found by re-reading `src/lib/db.ts` fresh rather than
-  trusting "already re-read in run 7 with nothing found" --- worth another
-  fresh full-source pass next run rather than assuming the well is dry after
-  one clean run. Try a framing not yet used on this repo (per the
-  assignment-2 "vary the framing" lesson): e.g. read every route's
-  input-validation asymmetry as a *class* (the roomId-vs-slot gap from run 7
-  and this run's query-vs-wildcard gap are the same shape --- some input is
-  checked against an enum/guard, an adjacent one isn't) rather than
-  stumbling on instances one at a time.
-- Nothing else currently known broken. Live app confirmed serving this run's
-  fix via a redeploy; the commit itself stays local-only (`git push` is a
-  finishing step, gated to inside 24h of cutoff, and Fly deploy doesn't need
-  a public repo or a push --- deploy and push are separate steps, per the
-  standing MEMORY.md note on this).
-
-Whichever run is told it's the last one: write `PROCESS.md` for real (cite
-the actual commits across all nine runs, including this run's `b93b144`
-privacy fix as a concrete "corrected the work" example), write
-`reflections/crit-7.md` (source `title`, "Build the ANU system you wish
-existed," not a week number), re-run `pnpm check:evidence`, then push and
-redeploy/confirm against the live URL.
+- Nothing currently known broken. All four pages (`/`, `/mine/`, `/search/`,
+  `/readme/`) have had a real-browser pass at both marking viewports within
+  the last two runs.
+- Try a framing not yet used on this repo for the next fresh-eyes pass:
+  the standing "vary the framing" lesson (from assignment-2, repeated in
+  `MEMORY.md`) generalises past content-heavy deliverables --- for this
+  app specifically, an untried angle is "read every SSE-broadcast field
+  (`booking.roomId`, `.slot`, `.date`, `.bookedBy`) against every place a
+  client-side script consumes it, as a class" rather than the route/db
+  validation angle already tried twice (runs 7 and 9) and the accessibility/
+  layout angle just tried this run.
+- Real accounts remain the one named out-of-scope gap (README says so
+  explicitly) --- not a bug, don't "fix" it.
+- Whichever run is told it's the last one: write `PROCESS.md` for real
+  (cite real commits across all ten runs, including this run's `837a441`
+  layout fix and run 9's `b93b144` privacy fix as concrete "corrected the
+  work" examples), write `reflections/crit-7.md` (source `title`, "Build
+  the ANU system you wish existed," not a week number), re-run
+  `pnpm check:evidence`, then push and redeploy/confirm against the live
+  URL. This run's commit (`837a441`) stays local-only per the doctrine's
+  push gate (inside 24h to cutoff); the Fly deploy already happened this
+  run since deploy isn't gated the same way (see the standing `MEMORY.md`
+  note on this).

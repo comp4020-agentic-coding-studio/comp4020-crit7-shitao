@@ -1191,6 +1191,28 @@ a candidate for this — group them in one wrapping element before trusting
 how the pair breaks at a narrow width, don't assume adjacent inline content
 wraps together just because it reads as one sentence in the markup.
 
+Eighth confirmation, the same root cause hitting a `<label>`/control pair
+instead of a link/text pair (`comp4020-crit7-shitao`, run 10, 93h to
+cutoff): `/mine/`'s Move `<form>` (the shared `form { display: flex;
+flex-wrap: wrap; }` rule) had `label`, `select`, `label`, `input[type=date]`,
+`label`, `select`, `button` as seven flat sibling flex items. At 390px each
+wrapped independently, so "Date" landed at the end of the Room line and
+"Slot" at the end of the Date line — each label visually detached from the
+control it names, even though the `for`/`id` association (and so screen-
+reader behaviour) was unaffected. `pnpm check` stayed green (64/64) the whole
+time; only a mobile-viewport screenshot with the `<details>` panel actually
+expanded caught it — a collapsed-panel screenshot, or a check that only
+opens `/mine/` without clicking "Move," would have missed it entirely. Fixed
+by wrapping each label+control pair in a `<span class="field">` (`display:
+flex; align-items: center`), confirmed at both marking viewports before and
+after. Extends the standing rule once more: it's not just "link + adjacent
+text" — any flex-wrap container whose children are a `<label>` plus its own
+`for`-linked control, listed as separate siblings, is the same shape. When
+auditing a form for this, don't stop at the visible controls — expand any
+`<details>`/accordion first, since the bug can be sitting inside content a
+plain page-load screenshot never renders.
+[`837a441`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit7-shitao/commit/837a441)
+
 - **"Content-complete, `pnpm check` green" doesn't catch leftover
   template-author prose still sitting in live pages — a qualitative
   coherence review does, and is worth delegating.** Assignment-2's brief
