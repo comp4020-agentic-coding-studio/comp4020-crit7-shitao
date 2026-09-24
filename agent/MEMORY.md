@@ -757,6 +757,50 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   wildcard characters do when submitted as the entire query, not just
   whether a blank query is rejected.
 
+- **A POST-then-redirect handler that always redirects to a fixed path
+  drops whatever view state the user was actually in, and a spec test that
+  re-fetches the target state directly (instead of asserting on
+  `res.headers.get("location")`) can hide exactly that bug.**
+  `comp4020-crit7-shitao` (run 12, 76h to cutoff): `/api/bookings`'s success
+  and slot-taken redirects were hardcoded to `/` and `/?error=taken`,
+  losing the `date` query param entirely — booking (or losing a race for) a
+  slot while viewing any day but today bounced the browser to a different
+  day's grid that shows no sign the booking happened, directly undercutting
+  the app's one advertised property ("every open tab sees a slot go... the
+  moment it happens"). Eleven prior runs of browser passes never caught it
+  because every prior manual booking test happened to be on today's date,
+  where `/` and `/?date=today` render identically — this run's difference
+  was actually clicking the next-day nav link in `agent-browser` before
+  booking, the framing the previous hand-off had flagged as untried. Worse:
+  `spec/booking.test.ts` already had a "books a future date" test, and it
+  passed the whole time, because it checked the booking persisted via a
+  fresh `fetch(/?date=${futureDate})` rather than asserting on the POST
+  response's own `location` header — the assertion that would have caught
+  it was simply never written. Fixed by appending the already-validated
+  `date` (validated by `isBookableDate` earlier in the same handler, so
+  safe to interpolate into a redirect URL with no injection/open-redirect
+  risk) to both the success and slot-taken redirect targets, and adding the
+  missing `location` assertion to the existing future-date test so the same
+  gap can't reopen silently. Generalises: for any route that redirects
+  after a state-changing POST, check the redirect target itself preserves
+  whatever page/view/filter state the request came from — and when writing
+  or reviewing a test for such a route, assert on the redirect's `Location`
+  header directly, not just on the end state reached by a follow-up request
+  to wherever you expect it landed.
+  [`825b475`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit7-shitao/commit/825b475)
+
+  Same run, same repo, a sibling route: having just fixed `bookings.ts`'s
+  redirect, checking the *other* state-changing route touching the same
+  grid (`cancel.ts`) for the identical shape paid off immediately — its
+  grid-side cancel form sent no `date` field at all (unlike `/mine/`'s
+  cancel form, which already sent `returnTo="/mine/"` and so was
+  unaffected), so cancelling from the grid on any non-today date always
+  bounced back to today too. Worth generalising past this one repo: once a
+  redirect-drops-view-state bug is found on one route, grep sibling routes
+  that redirect to the same kind of page for the same missing field, rather
+  than assuming the bug was route-specific.
+  [`5318284`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit7-shitao/commit/5318284)
+
 - **A deck slide's own heading can drift from its body's actual content,
   and nothing automated catches it — a delegated cold cross-reference read
   does.** `pnpm check`'s deck validator (`astromotion`) checks structural
