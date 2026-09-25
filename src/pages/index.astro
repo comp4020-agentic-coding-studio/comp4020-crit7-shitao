@@ -52,6 +52,12 @@ const error = Astro.url.searchParams.get("error");
         sees a slot go from free to booked the moment it happens — no reload
         needed.
       </p>
+      <p>
+        No login: booking a slot remembers you with a cookie in this browser,
+        which is how a Cancel button shows only on bookings you made here.
+        Book and manage from the same browser — a different device, or a
+        cleared cookie, won't recognise a booking as yours.
+      </p>
       {error === "taken" && <p role="alert">Someone booked that slot just before you did — pick another.</p>}
       {error === "missing" && <p role="alert">Name, room and slot are all required.</p>}
       {error === "date" && <p role="alert">That date isn't bookable — pick one within the next two weeks.</p>}
