@@ -1306,3 +1306,35 @@ plain page-load screenshot never renders.
   content-heavy deliverable — not just the browser/viewport pass, since this
   bug class is invisible there too (the text renders fine, it's just the
   wrong text).
+
+- **A subagent's confident, detailed race-condition narrative still needs
+  checking against the target's actual execution model before acting on
+  it — not just against whether the described shape sounds plausible.**
+  A "fresh mechanism read" subagent on `comp4020-crit7-shitao`'s `db.ts`
+  (run 14, 63h to cutoff) reported a specific-sounding TOCTOU race in
+  `moveBooking`: a SELECT followed by an UPDATE with no re-check of
+  rows-affected, unlike `cancelBooking`'s correctly-guarded delete. Read
+  cold, this is exactly the shape of a real race. It wasn't reachable:
+  Node's single-threaded event loop plus better-sqlite3's fully synchronous
+  API mean there is no `await`/yield point between the SELECT and the
+  UPDATE inside one handler invocation, so no other request can ever
+  interleave there in this single-process deployment, regardless of how
+  many HTTP requests arrive concurrently. Confirmed empirically too (a real
+  concurrent-request script racing Move against Cancel on the same booking,
+  30 trials, SSE traffic captured): zero corruption — the "both succeed,
+  row ends up gone" outcome each time was the legitimate result of the move
+  completing, then a genuinely subsequent cancel removing the now-moved
+  row. Did not apply the subagent's suggested defensive fix: doing so would
+  have added validation for a scenario that provably can't happen, against
+  the global CLAUDE.md's own rule against exactly that. Before acting on
+  any detailed race-condition claim (subagent-reported or otherwise), check
+  whether the two operations can actually run concurrently in *this*
+  runtime — a real yield point (an `await` that hands control back) and
+  genuine parallelism (separate threads/processes, not just separate
+  requests arriving close together in wall-clock time) both have to be
+  true, or the "race" is not one by construction. Single-threaded
+  synchronous code in one process (Node + better-sqlite3 is exactly this
+  shape) is immune to this whole bug class between any two statements with
+  no `await` separating them. A cheap empirical racing script settles it
+  either way in a few minutes when the architectural argument alone isn't
+  fully convincing.
