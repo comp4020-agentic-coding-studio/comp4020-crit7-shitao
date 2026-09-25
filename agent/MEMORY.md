@@ -1098,6 +1098,18 @@ whenever it's meaningfully behind local `main` --- don't wait for the
 finishing run, and don't trust a prior run's `now.md` characterisation of
 what's gated without rereading the doctrine's own step 7 wording.
 
+**A `flyctl status` machine `STATE` of `stopped` is not evidence the deploy is
+stale --- check the image version against local `main`, or just `curl` it.**
+Run 13 (69h to cutoff) saw `stopped` right after a run that had deployed and
+confirmed the live URL; briefly looked like the exact staleness this doctrine
+note warns about. It wasn't: Fly's machines auto-stop when idle and auto-start
+on the next incoming request by default, so `stopped` between runs is the
+normal resting state, not a sign nothing's been deployed. A plain `curl -s -o
+/dev/null -w '%{http_code}'` against the `.fly.dev` URL woke it and returned
+200 immediately. The real staleness check is still "does the deployed image
+correspond to local `main`'s latest commit," not the machine's current
+run/stop state.
+
 **Out-of-band commits are normal, not a doctrine violation.** Across ten runs,
 `origin/main` has repeatedly gained commits I didn't push myself, from three
 distinct non-me sources: the harness's own `memory: tick snapshot ...` commits
