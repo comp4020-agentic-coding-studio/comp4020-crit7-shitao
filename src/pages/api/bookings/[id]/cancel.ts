@@ -27,14 +27,18 @@ export const POST: APIRoute = async ({ params, request, cookies, redirect }) => 
   // back on redirect too. /mine/ isn't date-scoped, so it never needs this.
   const date = String(form.get("date") ?? "");
   const target = returnTo === "/" && isBookableDate(date) ? `/?date=${date}` : returnTo;
+  // Only /mine/ renders a per-booking list to attach an error to — the grid
+  // shows one shared table keyed by room/slot, not by booking id.
+  const errorParam = id && returnTo === "/mine/" ? `&booking=${id}` : "";
+  const errorRedirect = () => redirect(`${target}${target.includes("?") ? "&" : "?"}error=cancel${errorParam}`, 303);
 
   if (!id || !token) {
-    return redirect(`${target}${target.includes("?") ? "&" : "?"}error=cancel`, 303);
+    return errorRedirect();
   }
 
   const cancelled = cancelBooking(id, token);
   if (!cancelled) {
-    return redirect(`${target}${target.includes("?") ? "&" : "?"}error=cancel`, 303);
+    return errorRedirect();
   }
 
   bus.emit("cancelled", cancelled);

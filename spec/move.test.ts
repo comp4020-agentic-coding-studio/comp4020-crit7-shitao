@@ -99,12 +99,13 @@ describe("moving a booking", () => {
     const mineA = await fetch(new URL("/mine/", baseUrl), { headers: { cookie: cookieA } });
     const moveAction = moveActionAfter(await mineA.text(), bookedByA);
 
+    const movingId = moveAction.match(/\/api\/bookings\/(\d+)\/move/)?.[1];
     const clash = await post(
       moveAction,
       new URLSearchParams({ roomId, date: nearDate, slot: "14:00", returnTo: "/mine/" }),
       cookieA,
     );
-    expect(clash.headers.get("location")).toBe("/mine/?error=taken");
+    expect(clash.headers.get("location")).toBe(`/mine/?error=taken&booking=${movingId}`);
 
     // A's booking never moved
     const mineAfter = await fetch(new URL("/mine/", baseUrl), { headers: { cookie: cookieA } });
@@ -113,6 +114,53 @@ describe("moving a booking", () => {
     // B's booking still stands, untouched by A's failed attempt
     const grid = await fetch(new URL(`/?date=${nearDate}`, baseUrl));
     expect(await grid.text()).toContain(`Booked — ${bookedByB}`);
+  });
+
+  it("attaches a move error to the booking it belongs to, not a sibling one on the same page", async () => {
+    const bookedBySibling = `move sibling ${process.hrtime.bigint()}`;
+    const bookedByMover = `move attribution probe ${process.hrtime.bigint()}`;
+
+    // One owner, two bookings, so /mine/ lists more than one row — the error
+    // has to land on the row that actually failed, not the other one.
+    // /mine/ lists bookings ordered by date then slot, so the mover's earlier
+    // slot is what puts its row — and so its alert — ahead of the sibling's.
+    const moverRes = await post(
+      "/api/bookings",
+      new URLSearchParams({ roomId, date: nearDate, slot: "09:00", bookedBy: bookedByMover }),
+    );
+    const cookie = ownerCookie(moverRes);
+    await post(
+      "/api/bookings",
+      new URLSearchParams({ roomId, date: nearDate, slot: "12:00", bookedBy: bookedBySibling }),
+      cookie,
+    );
+
+    const mineHtml = await (await fetch(new URL("/mine/", baseUrl), { headers: { cookie } })).text();
+    const moveAction = moveActionAfter(mineHtml, bookedByMover);
+
+    // farDate/12:00 is already occupied by the "moves a booking" test above.
+    const clash = await post(
+      moveAction,
+      new URLSearchParams({ roomId, date: farDate, slot: "12:00", returnTo: "/mine/" }),
+      cookie,
+    );
+    expect(clash.status).toBe(303);
+    const location = clash.headers.get("location") ?? "";
+    expect(location).toContain("error=taken");
+
+    const afterHtml = await (await fetch(new URL(location, baseUrl), { headers: { cookie } })).text();
+    // mine.astro renders the alert as the first child of the booking's own
+    // <li>, right before that booking's name — so it lands ahead of the
+    // mover's name, and the mover's name (and its whole <li>) lands ahead of
+    // the sibling's, which has no alert of its own.
+    const alertIndex = afterHtml.indexOf("Someone booked that slot already");
+    const moverIndex = afterHtml.indexOf(bookedByMover);
+    const siblingIndex = afterHtml.indexOf(bookedBySibling);
+    expect(alertIndex).toBeGreaterThan(-1);
+    expect(alertIndex).toBeLessThan(moverIndex);
+    expect(moverIndex).toBeLessThan(siblingIndex);
+    // and it only appears once — not also as a page-level banner elsewhere
+    expect(afterHtml.indexOf("Someone booked that slot already", alertIndex + 1)).toBe(-1);
   });
 
   it("refuses to move a booking without that booking's own owner cookie", async () => {
@@ -128,8 +176,9 @@ describe("moving a booking", () => {
     const moveAction = moveActionAfter(await mine.text(), bookedBy);
 
     // no cookie at all this time — a different browser, or a replayed request
+    const movingId = moveAction.match(/\/api\/bookings\/(\d+)\/move/)?.[1];
     const denied = await post(moveAction, new URLSearchParams({ roomId, date: farDate, slot: "09:00" }));
-    expect(denied.headers.get("location")).toBe("/mine/?error=missing");
+    expect(denied.headers.get("location")).toBe(`/mine/?error=missing&booking=${movingId}`);
 
     const mineAfter = await fetch(new URL("/mine/", baseUrl), { headers: { cookie } });
     expect(await mineAfter.text()).toContain(`${nearDate}</a>, 15:00`);
@@ -147,12 +196,13 @@ describe("moving a booking", () => {
     const mine = await fetch(new URL("/mine/", baseUrl), { headers: { cookie } });
     const moveAction = moveActionAfter(await mine.text(), bookedBy);
 
+    const movingId = moveAction.match(/\/api\/bookings\/(\d+)\/move/)?.[1];
     const rejected = await post(
       moveAction,
       new URLSearchParams({ roomId: "999999", date: farDate, slot: "09:00", returnTo: "/mine/" }),
       cookie,
     );
-    expect(rejected.headers.get("location")).toBe("/mine/?error=missing");
+    expect(rejected.headers.get("location")).toBe(`/mine/?error=missing&booking=${movingId}`);
 
     const mineAfter = await fetch(new URL("/mine/", baseUrl), { headers: { cookie } });
     expect(await mineAfter.text()).toContain(`${nearDate}</a>, 10:00`);
@@ -174,12 +224,13 @@ describe("moving a booking", () => {
     tooFar.setUTCDate(tooFar.getUTCDate() + 30);
     const tooFarDate = tooFar.toISOString().slice(0, 10);
 
+    const movingId = moveAction.match(/\/api\/bookings\/(\d+)\/move/)?.[1];
     const rejected = await post(
       moveAction,
       new URLSearchParams({ roomId, date: tooFarDate, slot: "09:00", returnTo: "/mine/" }),
       cookie,
     );
-    expect(rejected.headers.get("location")).toBe("/mine/?error=date");
+    expect(rejected.headers.get("location")).toBe(`/mine/?error=date&booking=${movingId}`);
 
     const mineAfter = await fetch(new URL("/mine/", baseUrl), { headers: { cookie } });
     expect(await mineAfter.text()).toContain(`${nearDate}</a>, 16:00`);

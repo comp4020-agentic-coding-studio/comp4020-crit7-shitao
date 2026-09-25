@@ -25,6 +25,12 @@ export const POST: APIRoute = async ({ params, request, cookies, redirect }) => 
   const date = String(form.get("date") ?? "");
   const slot = String(form.get("slot") ?? "");
 
+  // /mine/ can list several bookings at once, each with its own Move form —
+  // naming which one an error belongs to (mine.astro falls back to a
+  // page-level banner if this id isn't one of the visitor's own bookings)
+  // lets the error attach to the right row instead of one unscoped banner.
+  const errorParam = id ? `&booking=${id}` : "";
+
   // Same reasoning as bookings.ts: the form only ever sends a real room's id
   // via its own <select>, but a hand-built request could send anything, and
   // an unvalidated roomId would otherwise hit the database's foreign-key
@@ -39,22 +45,22 @@ export const POST: APIRoute = async ({ params, request, cookies, redirect }) => 
     !validRoomIds.has(roomId) ||
     !(SLOTS as readonly string[]).includes(slot)
   ) {
-    return redirect(`${returnTo}?error=missing`, 303);
+    return redirect(`${returnTo}?error=missing${errorParam}`, 303);
   }
   if (!isBookableDate(date)) {
-    return redirect(`${returnTo}?error=date`, 303);
+    return redirect(`${returnTo}?error=date${errorParam}`, 303);
   }
 
   try {
     const moved = moveBooking(id, token, { roomId, date, slot });
     if (!moved) {
-      return redirect(`${returnTo}?error=notfound`, 303);
+      return redirect(`${returnTo}?error=notfound${errorParam}`, 303);
     }
     bus.emit("cancelled", moved.previous);
     bus.emit("booking", moved.updated);
   } catch (error) {
     if (error instanceof SlotTakenError) {
-      return redirect(`${returnTo}?error=taken`, 303);
+      return redirect(`${returnTo}?error=taken${errorParam}`, 303);
     }
     throw error;
   }

@@ -16,6 +16,31 @@ const minDate = today();
 const maxDate = addDays(minDate, BOOKING_WINDOW_DAYS);
 
 const error = Astro.url.searchParams.get("error");
+const bookingIdParam = Astro.url.searchParams.get("booking");
+const erroredBookingId = bookingIdParam ? Number(bookingIdParam) : null;
+// A "booking" param names which row an error belongs to, but that row might
+// not be in myBookings at all (already gone, or a request sent without the
+// matching owner cookie) — fall back to the page-level banner whenever the
+// named booking isn't actually one we're about to render.
+const matchedBookingId = erroredBookingId && myBookings.some((b) => b.id === erroredBookingId) ? erroredBookingId : null;
+
+const errorMessage = (err: string | null) => {
+  switch (err) {
+    case "cancel":
+      return "Couldn't cancel that booking — it may already be gone.";
+    case "notfound":
+      return "Couldn't find that booking to move — it may already be gone.";
+    case "taken":
+      return "Someone booked that slot already — pick another.";
+    case "missing":
+      return "Room, date and slot are all required to move a booking.";
+    case "date":
+      return "That date isn't bookable — pick one within the next two weeks.";
+    default:
+      return null;
+  }
+};
+const message = errorMessage(error);
 ---
 
 <!doctype html>
@@ -34,17 +59,17 @@ const error = Astro.url.searchParams.get("error");
     </nav>
     <main>
       <h1>My bookings</h1>
-      {error === "cancel" && <p role="alert">Couldn't cancel that booking — it may already be gone.</p>}
-      {error === "notfound" && <p role="alert">Couldn't find that booking to move — it may already be gone.</p>}
-      {error === "taken" && <p role="alert">Someone booked that slot already — pick another.</p>}
-      {error === "missing" && <p role="alert">Room, date and slot are all required to move a booking.</p>}
-      {error === "date" && <p role="alert">That date isn't bookable — pick one within the next two weeks.</p>}
+      {message && !matchedBookingId && <p role="alert">{message}</p>}
       {myBookings.length === 0 ? (
-        <p>Nothing booked from today onward yet. Bookings you make will show up here.</p>
+        <p>
+          Nothing booked from today onward yet, on this browser — bookings only show up here on the browser and
+          device you made them from.
+        </p>
       ) : (
         <ul class="mine-list">
           {myBookings.map((booking) => (
             <li>
+              {message && matchedBookingId === booking.id && <p role="alert">{message}</p>}
               <span>
                 <a href={`/?date=${booking.date}`}>{booking.date}</a>, {booking.slot}, {roomName(booking.roomId)} —
                 booked by {booking.bookedBy}
@@ -55,6 +80,7 @@ const error = Astro.url.searchParams.get("error");
               </form>
               <details>
                 <summary>Move</summary>
+                <p>If the new time's already taken, this booking stays where it is.</p>
                 <form method="post" action={`/api/bookings/${booking.id}/move`}>
                   <input type="hidden" name="returnTo" value="/mine/" />
                   <span class="field">
