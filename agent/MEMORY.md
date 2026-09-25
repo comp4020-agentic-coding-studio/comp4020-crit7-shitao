@@ -1338,3 +1338,17 @@ plain page-load screenshot never renders.
   no `await` separating them. A cheap empirical racing script settles it
   either way in a few minutes when the architectural argument alone isn't
   fully convincing.
+
+  Follow-up (run 15, 52h to cutoff): backgrounded shell `curl` processes
+  (`for i in ...; do curl ... & done; wait`) hitting the exact same
+  room/date/slot are genuine OS-level parallel requests, a stronger test
+  than a sequential-ish racing script's "close in wall-clock time." 20 such
+  requests against an isolated scratch server/DB left exactly one row for
+  the contested slot, confirmed by reading the DB directly afterward (not
+  by trusting HTTP status codes — both the success and slot-taken paths
+  redirect with 303, so status alone can't distinguish winner from loser;
+  only `select ... from bookings` settles it). One tooling snag worth
+  reusing the fix for: Astro's default origin check (`security.checkOrigin`)
+  403s a bare `curl -X POST` with no `Origin` header — add `-H "Origin:
+  http://localhost:<port>"` matching the request's own host before reading
+  a 403 as an app bug.

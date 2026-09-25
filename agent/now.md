@@ -1,6 +1,6 @@
 # now
 
-**Fourteenth run for crit-7, 63h to cutoff at start.** Deliverable is
+**Fifteenth run for crit-7, 52h to cutoff at start.** Deliverable is
 `comp4020-crit7-shitao`: "Build the ANU system you wish existed." Still well
 inside the 168h window --- not the finishing run, so no `PROCESS.md` rewrite,
 no `reflections/crit-7.md`, no push.
@@ -8,87 +8,76 @@ no `reflections/crit-7.md`, no push.
 ## What this run did
 
 Took stock: `pnpm check` 66/66 green, working tree clean, local `main` at
-`c23a1b1` (a harness tick-snapshot, already pushed). Re-fetched the brief;
-unchanged. Picked up run 13's two flagged next actions plus its own
-suggested "fresh mechanism read":
+`15be951`, already in sync with `origin/main` (the harness's tick-snapshot had
+already pushed it). Re-fetched the brief; unchanged since run 14.
 
-1. **Sustained multi-tab load, past two tabs** --- ran 4 independently-named
-   `agent-browser` sessions against an isolated scratch server; booked from
-   one, confirmed all 3 others flip live via SSE with no console errors.
-   Extends run 13's two-tab check.
-2. **A subagent's "fresh mechanism read" of `db.ts`** reported a detailed
-   TOCTOU race in `moveBooking` (SELECT then UPDATE, no re-check of rows
-   affected, unlike `cancelBooking`). Investigated rather than trusted:
-   Node's single-threaded event loop plus better-sqlite3's fully synchronous
-   calls mean there is no `await`/yield point between the SELECT and UPDATE
-   inside one handler invocation, so no other request can ever interleave
-   there in this single-process deployment. Confirmed empirically too (a
-   real concurrent-request script racing Move against Cancel, 30 trials,
-   captured SSE traffic) --- no corruption, the "both succeed, row ends up
-   gone" outcome is the legitimate "move completed, then a legitimate cancel
-   removed the moved row" sequence. **Did not add the subagent's suggested
-   defensive check** --- would have violated the global CLAUDE.md rule
-   against validating scenarios that can't happen. Recording this as a
-   `MEMORY.md` lesson: a subagent's confident, detailed bug narrative still
-   needs checking against the target's actual execution model (sync vs.
-   async, single- vs. multi-process) before acting on it, not just against
-   whether the described shape sounds plausible.
-3. **Cold-read pass, new framing** ("read as someone using the app for the
-   first time, no login, does the *mechanism* make sense") found three real
-   comprehension gaps, none of them factual drift: the grid page never
-   explained what the cookie-based "no login" model actually means for
-   Cancel visibility; `/mine/`'s empty state didn't say bookings are
-   browser-bound; and `/mine/`'s Move/Cancel errors landed as one
-   page-level banner with no way to tell which booking (of several) an
-   error was actually about. Fixed all three:
-   - `index.astro`: one paragraph explaining the cookie-ownership model
-     (`baee21b`).
-   - `move.ts`/`cancel.ts`: both now append `&booking=<id>` to their error
-     redirects (cancel only when `returnTo=/mine/`, since the grid isn't a
-     per-booking view); `mine.astro` renders the error as that booking's own
-     `<li>`'s first child, falling back to the old page-level banner when
-     the named booking isn't actually one of the visitor's own; also added
-     a reassurance line inside the Move `<details>` ("if the new time's
-     already taken, this booking stays where it is") and clarified the
-     empty-state text (`3189940`, plus a new `spec/move.test.ts` case
-     asserting the alert lands on the right row, not a sibling's).
+This was a pure verification run --- **no code changes, nothing to commit.**
+Picked up run 14's least-recently-tried angles:
 
-Verified all of it in a real browser at both marking viewports (1920×1080,
-390×844), driving the actual flow (booked two slots, expanded Move, forced
-a real "taken" clash, confirmed the alert attaches to the correct row only
-and the sibling row is untouched) --- not just asserted via spec test
-string indices. Everything held at both viewports: no orphaned wrapping, no
-overflow, the existing `.field` label/control grouping fix still holds with
-the new paragraph inside `<details>`.
+1. **Genuine concurrent-write contention**, not just close-in-wall-clock-time
+   contention: 20 truly parallel backgrounded `curl` POSTs (`&` + `wait`, not
+   a sequential loop) at the exact same room/date/slot, against an isolated
+   scratch server/DB. Exactly one row won; the other 19 hit the unique
+   constraint. Stronger evidence than run 14's sequential-ish 30-trial script
+   --- this is actual OS-level parallel process contention, and the DB-level
+   guarantee held.
+2. **Fresh mechanism read of `owner.ts`/`events.ts`** (run 14's suggested
+   least-recently-tried file pair) --- both are tiny and read clean. Grepped
+   every `bus.emit`/`bus.on` pair: `events.ts` subscribes to both `booking`
+   and `cancelled`, matching every emit site in `bookings.ts`/`move.ts`/
+   `cancel.ts`. No drift.
+3. **README-vs-code drift check**: read `README.md` in full and cross-checked
+   every specific claim (unique constraint shape, owner-token cancel gate,
+   two-week window, `/mine/` cross-date listing, Move-as-one-UPDATE, Search's
+   GET/non-empty-query/LIKE-escaping) against the actual current source. All
+   still accurate --- no drift since it was last touched.
+4. **Real browser pass**, isolated scratch server + named `agent-browser`
+   sessions (`crit7-run15`, `crit7-tab2`), both marking viewports
+   (1920x1080, 390x844): grid, `/mine/`, `/search/`, `/readme/` all render
+   clean, no console errors. Drove an actual booking through the real form
+   (name fill + direct form `requestSubmit()` on the correct cell, after the
+   multi-match `find role button --name "Book"` hazard picked the wrong one
+   of 32 identically-named buttons and tripped native HTML5 validation on an
+   empty sibling field --- harmless, not a bug, just confirms accessible-name
+   collisions among same-labelled buttons need a scoped selector, not a
+   flagged `find`). Confirmed the Cancel button appears after redirect
+   (owner-token cookie match), `/mine/` and `/search/` both show the new
+   booking correctly.
+5. **Cross-tab SSE re-confirmed** with two independently-named sessions: booked
+   from tab one via direct form submission, tab two's still-open grid flipped
+   the cell live with no reload and no console error.
+6. **Fly deploy check**: `flyctl status` showed the machine `stopped` (normal
+   idle state, not staleness --- see standing memory note) at image version
+   matching run 14's deploy, which is exactly local `main`'s current commit
+   since nothing changed this run. `curl` woke it, confirmed 200. Nothing to
+   redeploy.
 
-`pnpm check` 66/66 after. Committed as two separate commits (content-only
-`index.astro` change; the interdependent mine.astro/move.ts/cancel.ts/spec
-error-attribution feature). Deployed both to Fly
-(`flyctl deploy --remote-only --ha=false -a comp4020-crit7-shitao`) and
-confirmed the live URL serves the new paragraph --- this isn't gated by the
-push restriction, per standing doctrine-timing note below the memory file's
-usual place. Not pushed to origin (inside 24h gate).
+All scratch state (`/tmp/crit7-scratch/`) and both browser sessions cleaned
+up; scratch server's port confirmed free after teardown.
 
 ## Next action
 
-- Local `main` (`3189940`) is one commit ahead of `origin/main` --- normal
-  under the push gate, not a problem to fix. The harness's own tick-snapshot
-  commits will pick it up, or the finishing run will push it directly.
-- Live Fly app is caught up with local `main` as of this run.
-- Least-recently-tried angles for a future non-finishing run: a genuine
-  sustained-load check with concurrent *writes* (not just reads/SSE fan-out)
-  hammering the same slot from several tabs at once, to watch the DB
-  constraint hold under real contention rather than curl-script contention;
-  a cold-read of `README.md`/`readme.astro` specifically (still not tried
-  with a fresh framing on this repo, per run 13's note); or re-reading
-  `owner.ts`/`events.ts` fresh, since this run's mechanism read was `db.ts`
-  only.
+- Local `main` (`15be951`) and `origin/main` are already in sync --- no
+  push needed, nothing pending.
+- Live Fly app already caught up (deployed at run 14, unchanged since).
+- This run's own verification pass came back clean across concurrent-write
+  contention, pub/sub coverage, README-vs-code drift, and a full browser
+  pass at both viewports plus cross-tab SSE --- a real "nothing to fix"
+  result, not a skipped check. Per standing memory doctrine ("content-
+  complete... is not sufficient evidence" / "two clean passes in a row is
+  not evidence the well is dry"), a future non-finishing run should still
+  try a **new** cold-read framing rather than assume this repo is done ---
+  candidates not yet tried on crit-7 specifically: reading `spec/*.test.ts`
+  themselves for contract-vs-implementation drift (the repo's own CLAUDE.md
+  names this risk explicitly); or a genuine multi-writer *Move* contention
+  test (two different bookings racing to move into the same destination
+  slot simultaneously, not just two fresh creates).
 - Whichever run is told it's the last one: write `PROCESS.md` for real (cite
-  real commits across all fourteen+ runs --- `837a441` layout fix, `b93b144`
+  real commits across all fifteen runs --- `837a441` layout fix, `b93b144`
   privacy fix, `c176080` FK-validation fix, `22bb0f8` route-coverage fix,
-  `825b475`/`5318284` redirect-date fixes, `3189940` error-attribution fix
-  are the concrete "corrected the work" examples so far), write
-  `reflections/crit-7.md` (source `title`, "Build the ANU system you wish
-  existed," not a week number), re-run `pnpm check:evidence`, push, and
-  redeploy/confirm against the live URL if local `main` has moved past what's
-  currently deployed.
+  `825b475`/`5318284` redirect-date fixes, `3189940` error-attribution fix,
+  `baee21b` cookie-model explainer are the concrete "corrected the work"
+  examples so far), write `reflections/crit-7.md` (source `title`, "Build
+  the ANU system you wish existed," not a week number), re-run
+  `pnpm check:evidence`, push, and redeploy/confirm against the live URL if
+  local `main` has moved past what's currently deployed.
