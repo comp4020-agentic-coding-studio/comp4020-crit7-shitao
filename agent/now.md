@@ -1,79 +1,82 @@
 # now
 
-**Fifteenth run for crit-7, 52h to cutoff at start.** Deliverable is
+**Sixteenth run for crit-7, 45h to cutoff at start.** Deliverable is
 `comp4020-crit7-shitao`: "Build the ANU system you wish existed." Still well
-inside the 168h window --- not the finishing run, so no `PROCESS.md` rewrite,
-no `reflections/crit-7.md`, no push.
+inside the 168h window --- not the finishing run, so no `PROCESS.md` rewrite
+(it's still the untouched template boilerplate, confirmed by `git log
+--oneline -- PROCESS.md` showing only "Initial commit" --- that's expected,
+per doctrine it's written for real on the last run, not before), no
+`reflections/crit-7.md`, no push.
 
 ## What this run did
 
 Took stock: `pnpm check` 66/66 green, working tree clean, local `main` at
-`15be951`, already in sync with `origin/main` (the harness's tick-snapshot had
-already pushed it). Re-fetched the brief; unchanged since run 14.
+`6b4cf3f`, already in sync with `origin/main`. Re-fetched the brief
+(unchanged since run 14/15). Fly `flyctl status` showed the machine
+`stopped` (normal idle) at the image matching run 14's deploy --- unchanged,
+since no code has changed since then, so nothing to redeploy.
 
-This was a pure verification run --- **no code changes, nothing to commit.**
-Picked up run 14's least-recently-tried angles:
+Picked up run 15's two suggested least-recently-tried angles, both came back
+clean:
 
-1. **Genuine concurrent-write contention**, not just close-in-wall-clock-time
-   contention: 20 truly parallel backgrounded `curl` POSTs (`&` + `wait`, not
-   a sequential loop) at the exact same room/date/slot, against an isolated
-   scratch server/DB. Exactly one row won; the other 19 hit the unique
-   constraint. Stronger evidence than run 14's sequential-ish 30-trial script
-   --- this is actual OS-level parallel process contention, and the DB-level
-   guarantee held.
-2. **Fresh mechanism read of `owner.ts`/`events.ts`** (run 14's suggested
-   least-recently-tried file pair) --- both are tiny and read clean. Grepped
-   every `bus.emit`/`bus.on` pair: `events.ts` subscribes to both `booking`
-   and `cancelled`, matching every emit site in `bookings.ts`/`move.ts`/
-   `cancel.ts`. No drift.
-3. **README-vs-code drift check**: read `README.md` in full and cross-checked
-   every specific claim (unique constraint shape, owner-token cancel gate,
-   two-week window, `/mine/` cross-date listing, Move-as-one-UPDATE, Search's
-   GET/non-empty-query/LIKE-escaping) against the actual current source. All
-   still accurate --- no drift since it was last touched.
-4. **Real browser pass**, isolated scratch server + named `agent-browser`
-   sessions (`crit7-run15`, `crit7-tab2`), both marking viewports
-   (1920x1080, 390x844): grid, `/mine/`, `/search/`, `/readme/` all render
-   clean, no console errors. Drove an actual booking through the real form
-   (name fill + direct form `requestSubmit()` on the correct cell, after the
-   multi-match `find role button --name "Book"` hazard picked the wrong one
-   of 32 identically-named buttons and tripped native HTML5 validation on an
-   empty sibling field --- harmless, not a bug, just confirms accessible-name
-   collisions among same-labelled buttons need a scoped selector, not a
-   flagged `find`). Confirmed the Cancel button appears after redirect
-   (owner-token cookie match), `/mine/` and `/search/` both show the new
-   booking correctly.
-5. **Cross-tab SSE re-confirmed** with two independently-named sessions: booked
-   from tab one via direct form submission, tab two's still-open grid flipped
-   the cell live with no reload and no console error.
-6. **Fly deploy check**: `flyctl status` showed the machine `stopped` (normal
-   idle state, not staleness --- see standing memory note) at image version
-   matching run 14's deploy, which is exactly local `main`'s current commit
-   since nothing changed this run. `curl` woke it, confirmed 200. Nothing to
-   redeploy.
+1. **Genuine multi-writer Move contention** (not just genuine concurrent
+   *creates*, which run 15 already proved holds): two *different* existing
+   bookings, each with their own owner-token cookie, racing to move into the
+   *same* destination slot at the same instant. Built this properly on the
+   second attempt --- the first attempt accidentally raced one booking
+   against itself (moving A to a slot it was already sitting at trivially
+   "succeeds" every round, since an UPDATE to a row's own current values
+   doesn't trip the unique constraint against itself), which produced a
+   deterministic, not-actually-racing result that would have been a false
+   "confirmed" if taken at face value. Fixed by using 8 independent rounds,
+   each with two brand-new bookings on their own date (so no round's state
+   leaks into another) actually converging on a fresh destination slot
+   neither started at. All 16 requests fired as genuine OS-level parallel
+   backgrounded `curl`s across all 8 rounds at once. Result: exactly one
+   winner and one `error=taken` loser per round, in every round, confirmed
+   directly against the DB afterward --- no double booking at any
+   destination slot, no lost booking (both rows always still present, one
+   moved, one at its original slot). The DB-level unique constraint holds
+   under genuine multi-writer Move contention, not just Create contention.
+   Tooling note for next time: `mapfile` is a bash builtin, not available
+   under zsh (`(eval): command not found: mapfile`) --- reading an array
+   from a file for a loop like this needs an explicit `bash -c '...'`
+   wrapper, not the default zsh shell this tool runs.
 
-All scratch state (`/tmp/crit7-scratch/`) and both browser sessions cleaned
-up; scratch server's port confirmed free after teardown.
+2. **Spec contract-vs-implementation drift review**, delegated to a
+   general-purpose/sonnet subagent per the "reserve top model for
+   subtle-debugging/adversarial-verification, sonnet for everything else"
+   rule --- this was a cold structural read, not subtle debugging. Read all
+   eight `spec/` files plus every route/lib file they exercise. Clean: every
+   assertion targets status code, redirect `Location`, or rendered HTML ---
+   nothing asserts on `db.ts`'s internal function shapes or a specific
+   internal ordering that isn't part of the observable contract.
+   `spec/routes.ts`'s four-route coverage list still matches all four actual
+   `.astro` page files exactly; the four API routes are correctly handled by
+   `booking.test.ts`/`mine.test.ts`/`move.test.ts` directly rather than the
+   HTML-page invariants file, which is the right split, not a gap.
+
+Both scratch DB and server torn down; port confirmed free after.
 
 ## Next action
 
-- Local `main` (`15be951`) and `origin/main` are already in sync --- no
-  push needed, nothing pending.
-- Live Fly app already caught up (deployed at run 14, unchanged since).
-- This run's own verification pass came back clean across concurrent-write
-  contention, pub/sub coverage, README-vs-code drift, and a full browser
-  pass at both viewports plus cross-tab SSE --- a real "nothing to fix"
-  result, not a skipped check. Per standing memory doctrine ("content-
-  complete... is not sufficient evidence" / "two clean passes in a row is
-  not evidence the well is dry"), a future non-finishing run should still
-  try a **new** cold-read framing rather than assume this repo is done ---
-  candidates not yet tried on crit-7 specifically: reading `spec/*.test.ts`
-  themselves for contract-vs-implementation drift (the repo's own CLAUDE.md
-  names this risk explicitly); or a genuine multi-writer *Move* contention
-  test (two different bookings racing to move into the same destination
-  slot simultaneously, not just two fresh creates).
+- Nothing pending to push or redeploy --- local and `origin/main` already
+  agree, Fly already caught up.
+- Per standing doctrine ("two clean passes in a row is not evidence the well
+  is dry"), a future non-finishing run should try a fresh angle rather than
+  assume crit-7 is done. Candidates not yet tried on this repo specifically:
+  a genuine multi-writer race on **cancel-vs-move** (one request cancelling
+  a booking at the exact instant another request tries to move a *different*
+  booking into that just-freed slot --- does the mover ever see a phantom
+  "taken" for a slot that's actually free by the time its own request
+  completes, or land cleanly); or reading `mine.astro`/`index.astro`'s
+  actual template markup cold against every one of `booking.test.ts`'s and
+  `mine.test.ts`'s regex-based DOM assertions specifically for *brittleness*
+  (not correctness, which this run's spec-drift pass already covered) ---
+  i.e. would a purely cosmetic, contract-preserving markup change (attribute
+  order, added wrapper div) break a test that doesn't need to care.
 - Whichever run is told it's the last one: write `PROCESS.md` for real (cite
-  real commits across all fifteen runs --- `837a441` layout fix, `b93b144`
+  real commits across all sixteen runs --- `837a441` layout fix, `b93b144`
   privacy fix, `c176080` FK-validation fix, `22bb0f8` route-coverage fix,
   `825b475`/`5318284` redirect-date fixes, `3189940` error-attribution fix,
   `baee21b` cookie-model explainer are the concrete "corrected the work"

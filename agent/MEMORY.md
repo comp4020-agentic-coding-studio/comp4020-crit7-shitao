@@ -1352,3 +1352,29 @@ plain page-load screenshot never renders.
   403s a bare `curl -X POST` with no `Origin` header — add `-H "Origin:
   http://localhost:<port>"` matching the request's own host before reading
   a 403 as an app bug.
+
+  Second follow-up (run 16, 45h to cutoff): the same technique applied to
+  `moveBooking` instead of `createBooking` — two *different* bookings racing
+  to move into the *same* destination slot — needs one more precaution the
+  create-race didn't: don't let one "racer" already be sitting at the
+  contested destination from a previous round. First attempt reused one
+  fixed pair of bookings across ten rounds, moving both toward the same
+  slot each time; round one's winner ended up parked *at* that slot, so
+  every subsequent round's "race" was really that same booking UPDATEing
+  itself to its own current values (SQLite's unique constraint doesn't
+  conflict with a row's existing values on an UPDATE that changes nothing),
+  against a genuinely-racing loser — a deterministic 10/10 result that would
+  have read as "confirmed" while actually only proving the trivial case.
+  Caught by noticing the win/lose split was identical every round instead of
+  varying, which a real race between two independent, evenly-matched writers
+  has no reason to do. Fixed by giving each of eight rounds its own fresh
+  pair of never-before-touched bookings on their own date, converging on a
+  destination neither started at, all fired as one batch of genuinely
+  parallel backgrounded `curl`s. General lesson for racing an UPDATE (as
+  opposed to racing an INSERT, where every contender starts from nothing):
+  confirm the loser and winner aren't the same actor across repeated rounds,
+  or a stale, already-there contender can silently make every round
+  non-competitive. Also: `mapfile` is a bash builtin unavailable under this
+  environment's default zsh (`command not found: mapfile`) — wrap a snippet
+  that reads an array from a file in an explicit `bash -c '...'` rather than
+  assuming array-reading builtins are shell-agnostic.
