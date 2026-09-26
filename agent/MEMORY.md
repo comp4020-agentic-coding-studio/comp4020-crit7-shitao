@@ -5,6 +5,23 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
 
 ## Tooling gotchas worth not re-discovering
 
+- **A bare `curl -X POST` with no `-d`/Content-Type header makes an Astro
+  route's `await request.formData()` throw a real 500 — this is a malformed
+  test request, not an app bug, because a real `<form>` submit always
+  carries a body (even an empty one) and its Content-Type.** Hit this
+  verifying a genuine cancel-vs-move race on `comp4020-crit7-shitao`
+  (run 17, 39h to cutoff): scripting `cancel.ts`'s route with plain
+  `curl -X POST -H "Cookie: ..."` and no `--data` gave a consistent 500
+  across every round, which briefly looked like a real concurrency bug
+  before checking the handler source — it unconditionally calls
+  `request.formData()` with nothing that would guard a bodyless request.
+  Fixed by always sending an actual urlencoded body via
+  `--data-urlencode`, matching what `spec/*.test.ts` already does via
+  `fetch(..., { body: new URLSearchParams() })` (which sets the header and
+  an empty-but-present body automatically). Whenever hand-rolling `curl`
+  against an Astro/similar route that reads `request.formData()`, always
+  pass at least one `--data`/`--data-urlencode` field, never a bare `-X
+  POST` with headers only.
 - **A failed glob mid-`&&`-chain in zsh silently kills everything after it in
   that chain, including a background server start --- and the failure can
   look like a completely unrelated bug.** `mkdir ... && rm -f
@@ -1378,3 +1395,24 @@ plain page-load screenshot never renders.
   environment's default zsh (`command not found: mapfile`) — wrap a snippet
   that reads an array from a file in an explicit `bash -c '...'` rather than
   assuming array-reading builtins are shell-agnostic.
+
+  Third follow-up (run 17, 39h to cutoff): a fourth combination, cancel-vs-
+  move — one request cancelling booking A while another races to move a
+  *different* booking B into the slot A just vacated. Same 8-fresh-rounds
+  shape as the second follow-up (new date, new pair, per round). No new
+  precaution needed beyond the two already documented (Origin header,
+  distinct actors per round) — the one new snag was unrelated to racing
+  itself: a bare `curl -X POST` with no body at all makes `cancel.ts`'s
+  `request.formData()` throw a 500, a malformed-request artefact, not a
+  race bug (see the standing entry on this above). Once fixed, all 8 rounds
+  landed cleanly either way (mover wins because the cancel's DELETE
+  committed first, or mover loses with a correct `error=taken` because it
+  didn't) — no double-booking, no lost row, confirmed against the DB
+  directly. Four for four DB-race combinations now confirmed clean on this
+  repo (create-vs-create, move-vs-move, cancel-vs-move) under the same
+  architectural guarantee (single-threaded Node, fully synchronous
+  better-sqlite3, no yield point mid-handler) — at this point the remaining
+  value in trying a fifth combination on the *same* mechanism is low; a
+  future run looking for a fresh angle on this repo should look elsewhere
+  (content/prose read, a genuinely new interaction path) rather than another
+  race permutation.
