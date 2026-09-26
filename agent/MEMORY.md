@@ -5,6 +5,21 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
 
 ## Tooling gotchas worth not re-discovering
 
+- **A crit source's rendered Markdown heading and its raw JSON `title` field
+  can differ, and the reflection filename/heading rule wants the latter.**
+  Fetching `crits/07-anu-system.json` via `WebFetch` (crit-7's finishing run,
+  28h to cutoff) returned rendered prose headed "# Crit 7: Build the ANU
+  System You Wish Existed" --- title case, with a "Crit N:" prefix. The raw
+  JSON's actual `title` field was `"Build the ANU system you wish existed"`:
+  sentence case, no prefix. The doctrine's reflection rule ("head it with the
+  source's title, never a week number") means the JSON field specifically,
+  not whatever heading a Markdown-rendering fetch happens to produce ---
+  confirmed by a follow-up plain `curl` of the same URL to read the JSON
+  directly rather than trusting the first fetch's rendering. Do this check
+  on every future reflection: pull the raw JSON (`curl -fsS <url> | head`)
+  and copy `title` verbatim, don't rely on a prior WebFetch's own heading
+  choice.
+
 - **A bare `curl -X POST` with no `-d`/Content-Type header makes an Astro
   route's `await request.formData()` throw a real 500 — this is a malformed
   test request, not an app bug, because a real `<form>` submit always
