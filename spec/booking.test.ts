@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, inject, it } from "vitest";
+import { cellTagSource } from "./cell";
 
 // This week's spec turned into tests: the ANU system being modelled is a
 // room-booking board, so the contracts worth asserting are the ones the
@@ -40,7 +41,7 @@ describe("booking", () => {
     slot = "09:00";
     const res = await fetch(baseUrl);
     const html = await res.text();
-    const match = html.match(/data-room="(\d+)" data-slot="09:00"/);
+    const match = html.match(new RegExp(cellTagSource("(\\d+)", "09:00")));
     if (!match) throw new Error("no 09:00 cell found on the home page");
     roomId = match[1];
   });
@@ -120,7 +121,7 @@ describe("booking", () => {
     const owned = await fetch(baseUrl, { headers: { cookie } });
     const ownedHtml = await owned.text();
     const cellMatch = ownedHtml.match(
-      new RegExp(`data-room="${roomId}" data-slot="${cancelSlot}"[\\s\\S]*?action="(/api/bookings/\\d+/cancel)"`),
+      new RegExp(`${cellTagSource(roomId, cancelSlot)}[\\s\\S]*?action="(/api/bookings/\\d+/cancel)"`),
     );
     if (!cellMatch) throw new Error("no cancel form found for the booking's own cookie");
 
@@ -132,7 +133,7 @@ describe("booking", () => {
     const text = await page.text();
     expect(text).not.toContain(`Booked — ${bookedBy}`);
     // the slot is free again, not just vacated of this booking
-    const cell = text.match(new RegExp(`data-room="${roomId}" data-slot="${cancelSlot}"[\\s\\S]{0,300}`));
+    const cell = text.match(new RegExp(`${cellTagSource(roomId, cancelSlot)}[\\s\\S]{0,300}`));
     expect(cell?.[0]).toContain("<form");
   });
 
@@ -149,7 +150,7 @@ describe("booking", () => {
     const owned = await fetch(baseUrl, { headers: { cookie: ownerCookieValue } });
     const ownedHtml = await owned.text();
     const cellMatch = ownedHtml.match(
-      new RegExp(`data-room="${roomId}" data-slot="${guardedSlot}"[\\s\\S]*?action="(/api/bookings/\\d+/cancel)"`),
+      new RegExp(`${cellTagSource(roomId, guardedSlot)}[\\s\\S]*?action="(/api/bookings/\\d+/cancel)"`),
     );
     if (!cellMatch) throw new Error("no cancel form found for the booking's own cookie");
 
@@ -171,7 +172,7 @@ describe("booking", () => {
     const owned = await fetch(baseUrl, { headers: { cookie } });
     const ownedHtml = await owned.text();
     const cellMatch = ownedHtml.match(
-      new RegExp(`data-room="${roomId}" data-slot="${liveSlot}"[\\s\\S]*?action="(/api/bookings/\\d+/cancel)"`),
+      new RegExp(`${cellTagSource(roomId, liveSlot)}[\\s\\S]*?action="(/api/bookings/\\d+/cancel)"`),
     );
     if (!cellMatch) throw new Error("no cancel form found for the booking's own cookie");
 
@@ -233,7 +234,7 @@ describe("booking", () => {
     const owned = await fetch(new URL(`/?date=${futureDate}`, baseUrl), { headers: { cookie } });
     const ownedHtml = await owned.text();
     const cellMatch = ownedHtml.match(
-      new RegExp(`data-room="${roomId}" data-slot="${futureSlot}"[\\s\\S]*?action="(/api/bookings/\\d+/cancel)"`),
+      new RegExp(`${cellTagSource(roomId, futureSlot)}[\\s\\S]*?action="(/api/bookings/\\d+/cancel)"`),
     );
     if (!cellMatch) throw new Error("no cancel form found for the booking's own cookie");
 

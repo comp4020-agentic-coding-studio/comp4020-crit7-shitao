@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, inject, it } from "vitest";
+import { bookingRow, cellTagSource } from "./cell";
 
 // Editing a booking in place (a single UPDATE, gated the same way cancel is)
 // rather than cancel-then-rebook: the point is that if the destination slot
@@ -48,7 +49,7 @@ describe("moving a booking", () => {
 
     const res = await fetch(baseUrl);
     const html = await res.text();
-    const match = html.match(/data-room="(\d+)" data-slot="09:00"/);
+    const match = html.match(new RegExp(cellTagSource("(\\d+)", "09:00")));
     if (!match) throw new Error("no 09:00 cell found on the home page");
     roomId = match[1];
   });
@@ -73,11 +74,11 @@ describe("moving a booking", () => {
     const after = await fetch(new URL("/mine/", baseUrl), { headers: { cookie } });
     const afterText = await after.text();
     expect(afterText).toContain(farDate);
-    expect(afterText).not.toContain(`${nearDate}</a>, 11:00`);
+    expect(afterText).not.toMatch(bookingRow(nearDate, "11:00"));
 
     // the old cell is free again on the grid, not just gone from /mine/
     const oldGrid = await fetch(new URL(`/?date=${nearDate}`, baseUrl));
-    const oldCell = (await oldGrid.text()).match(new RegExp(`data-room="${roomId}" data-slot="11:00"[\\s\\S]{0,300}`));
+    const oldCell = (await oldGrid.text()).match(new RegExp(`${cellTagSource(roomId, "11:00")}[\\s\\S]{0,300}`));
     expect(oldCell?.[0]).toContain("<form");
 
     // the new cell is booked on the grid
@@ -109,7 +110,7 @@ describe("moving a booking", () => {
 
     // A's booking never moved
     const mineAfter = await fetch(new URL("/mine/", baseUrl), { headers: { cookie: cookieA } });
-    expect(await mineAfter.text()).toContain(`${nearDate}</a>, 13:00`);
+    expect(await mineAfter.text()).toMatch(bookingRow(nearDate, "13:00"));
 
     // B's booking still stands, untouched by A's failed attempt
     const grid = await fetch(new URL(`/?date=${nearDate}`, baseUrl));
@@ -181,7 +182,7 @@ describe("moving a booking", () => {
     expect(denied.headers.get("location")).toBe(`/mine/?error=missing&booking=${movingId}`);
 
     const mineAfter = await fetch(new URL("/mine/", baseUrl), { headers: { cookie } });
-    expect(await mineAfter.text()).toContain(`${nearDate}</a>, 15:00`);
+    expect(await mineAfter.text()).toMatch(bookingRow(nearDate, "15:00"));
   });
 
   it("refuses a move to a room id that doesn't exist, rather than a raw 500", async () => {
@@ -205,7 +206,7 @@ describe("moving a booking", () => {
     expect(rejected.headers.get("location")).toBe(`/mine/?error=missing&booking=${movingId}`);
 
     const mineAfter = await fetch(new URL("/mine/", baseUrl), { headers: { cookie } });
-    expect(await mineAfter.text()).toContain(`${nearDate}</a>, 10:00`);
+    expect(await mineAfter.text()).toMatch(bookingRow(nearDate, "10:00"));
   });
 
   it("rejects a move to a date outside the two-week window, leaving the booking unchanged", async () => {
@@ -233,6 +234,6 @@ describe("moving a booking", () => {
     expect(rejected.headers.get("location")).toBe(`/mine/?error=date&booking=${movingId}`);
 
     const mineAfter = await fetch(new URL("/mine/", baseUrl), { headers: { cookie } });
-    expect(await mineAfter.text()).toContain(`${nearDate}</a>, 16:00`);
+    expect(await mineAfter.text()).toMatch(bookingRow(nearDate, "16:00"));
   });
 });

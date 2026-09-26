@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { inject } from "vitest";
+import { cellTagSource } from "./cell";
 
 // /search/ is the answer to "is Priya's meeting still at 2pm Thursday" — the
 // grid only shows one date and /mine/ only shows one browser's own bookings,
@@ -24,7 +25,7 @@ describe("search", () => {
 
     const res = await fetch(baseUrl);
     const html = await res.text();
-    const match = html.match(/data-room="(\d+)" data-slot="09:00"/);
+    const match = html.match(new RegExp(cellTagSource("(\\d+)", "09:00")));
     if (!match) throw new Error("no 09:00 cell found on the home page");
     roomId = match[1];
   });

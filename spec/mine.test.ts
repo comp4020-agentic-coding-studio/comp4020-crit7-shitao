@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, inject, it } from "vitest";
+import { cellTagSource } from "./cell";
 
 // /mine/ is the answer to "wait, what did I book and where" — the grid only
 // ever shows one date, so finding your own booking otherwise means clicking
@@ -44,7 +45,7 @@ describe("my bookings", () => {
 
     const res = await fetch(baseUrl);
     const html = await res.text();
-    const match = html.match(/data-room="(\d+)" data-slot="09:00"/);
+    const match = html.match(new RegExp(cellTagSource("(\\d+)", "09:00")));
     if (!match) throw new Error("no 09:00 cell found on the home page");
     roomId = match[1];
   });
@@ -101,7 +102,7 @@ describe("my bookings", () => {
     // the slot is free again on the grid, not just gone from /mine/
     const grid = await fetch(new URL(`/?date=${futureDate}`, baseUrl));
     const gridText = await grid.text();
-    const cell = gridText.match(new RegExp(`data-room="${roomId}" data-slot="${slot}"[\\s\\S]{0,300}`));
+    const cell = gridText.match(new RegExp(`${cellTagSource(roomId, slot)}[\\s\\S]{0,300}`));
     expect(cell?.[0]).toContain("<form");
   });
 
